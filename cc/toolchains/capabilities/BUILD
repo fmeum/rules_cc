@@ -17,3 +17,11 @@ cc_tool_capability(
 cc_tool_capability(
     name = "supports_pic",
 )
+
+cc_tool_capability(
+    name = "supports_header_parsing",
+)
+
+cc_tool_capability(
+    name = "supports_param_files",
+)
