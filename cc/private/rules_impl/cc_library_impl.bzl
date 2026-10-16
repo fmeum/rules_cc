@@ -259,6 +259,9 @@ def _cc_library_impl(ctx):
         cc_toolchain = cc_toolchain,
         feature_configuration = feature_configuration,
         metadata_files = gcno_files + pic_gcno_files,
+        virtual_to_original_headers =
+            compilation_context.virtual_to_original_headers() if hasattr(compilation_context, "virtual_to_original_headers") else compilation_context._virtual_to_original_headers,
+        compilation_outputs = compilation_outputs,
     )
 
     runfiles_list = []

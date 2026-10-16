@@ -112,6 +112,7 @@ def _add_transitive_info_providers(ctx, cc_toolchain, cpp_config, feature_config
         metadata_files = additional_meta_data + gcno_files + pic_gcno_files,
         virtual_to_original_headers =
             compilation_context.virtual_to_original_headers() if hasattr(compilation_context, "virtual_to_original_headers") else compilation_context._virtual_to_original_headers,
+        compilation_outputs = cc_compilation_outputs,
     )
     output_groups = cc_helper.build_output_groups_for_emitting_compile_providers(
         cc_compilation_outputs,

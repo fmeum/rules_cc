@@ -42,6 +42,7 @@ bzl_library(
         "//cc/private:paths_bzl",
         "//cc/private:visibility_bzl",
         "//cc/private/rules_impl:native_cc_common_bzl",
+        "@bazel_features//:features",
         "@bazel_skylib//lib:paths",
         "@cc_compatibility_proxy//:symbols_bzl",
     ],
@@ -58,6 +59,7 @@ bzl_library(
         "//cc/private:paths_bzl",
         "//cc/private:visibility_bzl",
         "//cc/private/rules_impl:objc_common",
+        "@bazel_features//:features",
     ],
 )
 

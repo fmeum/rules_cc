@@ -244,6 +244,62 @@ def _test_coverage_module_action_has_no_gcno_file_impl(env, target):
         "{package}/_objs/{test_name}/instrumented/instrumented.pcm",
     ])
 
+_LLVM_COVERAGE_CONFIG_SETTINGS = {
+    "//command_line_option:collect_code_coverage": "true",
+    "//command_line_option:experimental_generate_llvm_lcov": "true",
+    "//command_line_option:experimental_use_llvm_covmap": "true",
+    "//command_line_option:instrumentation_filter": "/instrumented$",
+}
+
+# Mirrors the check in cc_helper.bzl.
+# TODO: Access these directly once they are available in a bazel_features release.
+_BAZEL_SUPPORTS_LLVM_BASELINE_COVERAGE = (
+    bazel_features.rules.instrumented_files_info_has_baseline_coverage_files and
+    getattr(bazel_features.rules, "run_has_stdout", False) and
+    getattr(bazel_features.rules, "baseline_coverage_is_filtered", False)
+)
+
+# With a toolchain whose llvm-cov supports baseline coverage, an instrumented target generates
+# baseline coverage from its object files.
+def _test_coverage_llvm_baseline_coverage(name, **kwargs):
+    cc_analysis_test(
+        name = name,
+        impl = _test_coverage_llvm_baseline_coverage_impl,
+        target = _declare_instrumented_lib(name),
+        config_settings = _LLVM_COVERAGE_CONFIG_SETTINGS,
+        test_features = ["supports_baseline_coverage"],
+        with_action_configs = ["llvm-cov"],
+        **kwargs
+    )
+
+def _test_coverage_llvm_baseline_coverage_impl(env, target):
+    action = env.expect.that_target(target).action_named("CppBaselineCoverage")
+    action.argv().contains_at_least([
+        "export",
+        "-format=lcov",
+        "-empty-profile",
+        "-unify-instantiations=true",
+        "-compilation-dir=.",
+        "-object",
+    ])
+    action.argv().contains_predicate(matching.str_matches("*/instrumented.*o"))
+
+# Without the supports_baseline_coverage capability, Bazel's default baseline coverage is used.
+def _test_coverage_llvm_baseline_coverage_requires_capability(name, **kwargs):
+    cc_analysis_test(
+        name = name,
+        impl = _test_coverage_llvm_baseline_coverage_requires_capability_impl,
+        target = _declare_instrumented_lib(name),
+        config_settings = _LLVM_COVERAGE_CONFIG_SETTINGS,
+        with_action_configs = ["llvm-cov"],
+        **kwargs
+    )
+
+def _test_coverage_llvm_baseline_coverage_requires_capability_impl(env, target):
+    env.expect.that_collection(
+        [action.mnemonic for action in target.actions],
+    ).not_contains("CppBaselineCoverage")
+
 def cc_library_configured_target_tests(name):
     test_suite(
         name = name,
@@ -256,5 +312,8 @@ def cc_library_configured_target_tests(name):
             _test_coverage_implementation_dep_makes_target_instrumented,
             _test_coverage_unmatched_target_is_not_instrumented,
             _test_coverage_module_action_has_no_gcno_file,
-        ] if bazel_features.cc.cc_common_is_in_rules_cc else [],
+        ] + ([
+            _test_coverage_llvm_baseline_coverage,
+            _test_coverage_llvm_baseline_coverage_requires_capability,
+        ] if _BAZEL_SUPPORTS_LLVM_BASELINE_COVERAGE else []) if bazel_features.cc.cc_common_is_in_rules_cc else [],
     )

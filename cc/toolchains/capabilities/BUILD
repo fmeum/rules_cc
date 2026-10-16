@@ -6,6 +6,12 @@ cc_tool_capability(
     name = "supports_start_end_lib",
 )
 
+# Declares that the tool mapped to the `llvm_cov` action can generate baseline
+# coverage, i.e. supports `llvm-cov export -empty-profile` (LLVM 21+).
+cc_tool_capability(
+    name = "supports_baseline_coverage",
+)
+
 cc_tool_capability(
     name = "supports_interface_shared_libraries",
 )

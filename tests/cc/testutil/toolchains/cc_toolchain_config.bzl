@@ -821,6 +821,11 @@ _supports_start_end_lib_feature = feature(
     enabled = True,
 )
 
+_supports_baseline_coverage_feature = feature(
+    name = FEATURE_NAMES.supports_baseline_coverage,
+    enabled = True,
+)
+
 _supports_pic_feature = feature(name = FEATURE_NAMES.supports_pic, enabled = True)
 
 _prefer_pic_for_opt_binaries_feature = feature(
@@ -1793,6 +1798,7 @@ _feature_name_to_feature = {
     FEATURE_NAMES.per_object_debug_info: _per_object_debug_info_feature,
     FEATURE_NAMES.copy_dynamic_libraries_to_binary: _copy_dynamic_libraries_to_binary_feature,
     FEATURE_NAMES.supports_start_end_lib: _supports_start_end_lib_feature,
+    FEATURE_NAMES.supports_baseline_coverage: _supports_baseline_coverage_feature,
     FEATURE_NAMES.supports_pic: _supports_pic_feature,
     FEATURE_NAMES.prefer_pic_for_opt_binaries: _prefer_pic_for_opt_binaries_feature,
     FEATURE_NAMES.targets_windows: _targets_windows_feature,

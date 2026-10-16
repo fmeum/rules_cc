@@ -155,6 +155,14 @@ linker flags to produce the instrumented binaries.
 These features are all off by default. Toolchains should make the format
 features dependent on `coverage` being enabled.
 
+With `llvm_coverage_map_format` and `--experimental_generate_llvm_lcov`,
+`rules_cc` can also generate baseline coverage for every instrumented
+target by running `llvm-cov export -empty-profile` on its object files.
+This ensures that code that isn't linked into any test is still reported
+as uncovered in the combined coverage report. See
+[`supports_baseline_coverage`](#supports_baseline_coverage) for how to
+enable it.
+
 ### `coverage_enabled` / `coverage_instrumented`
 
 `coverage_enabled` is requested whenever `coverage` is, that is, whenever
@@ -561,6 +569,35 @@ A marker feature used by `rules_cc` to determine if the toolchain
 should statically link the C++ runtime libraries.
 
 This feature must be enabled if desired.
+
+### `supports_baseline_coverage`
+
+A marker feature indicating that the tool used for the `llvm_cov` action
+can generate baseline coverage, that is, `llvm-cov export` supports the
+`-empty-profile` flag (LLVM 21 or later). With rule-based toolchains,
+declare the `@rules_cc//cc/toolchains/capabilities:supports_baseline_coverage`
+capability on the `cc_tool` mapped to
+`@rules_cc//cc/toolchains/actions:llvm_cov`:
+
+```
+cc_tool(
+    name = "llvm-cov",
+    src = "@llvm//:bin/llvm-cov",
+    capabilities = [
+        "@rules_cc//cc/toolchains/capabilities:supports_baseline_coverage",
+    ],
+)
+```
+
+Baseline coverage is only generated when coverage is collected with
+`--experimental_use_llvm_covmap` and `--experimental_generate_llvm_lcov`
+and the target isn't compiled with ThinLTO. To report paths relative to
+the execution root, `llvm-cov` is invoked with `-compilation-dir=.`, so
+the toolchain should either compile with `-fcoverage-compilation-dir=.`
+or rely on Bazel setting `PWD=/proc/self/cwd` for compile actions on
+Linux, which `collect_cc_coverage.sh` strips from test coverage reports.
+
+This feature must be enabled if supported.
 
 ### `supports_dynamic_linker`
 

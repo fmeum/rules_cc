@@ -95,6 +95,7 @@ FEATURE_NAMES = struct(
     static_link_cpp_runtimes = feature_names.STATIC_LINK_CPP_RUNTIMES,
     static_linking_mode = "static_linking_mode",
     strip_debug_symbols = "strip_debug_symbols",
+    supports_baseline_coverage = feature_names.SUPPORTS_BASELINE_COVERAGE,
     supports_dynamic_linker = feature_names.SUPPORTS_DYNAMIC_LINKER,
     supports_interface_shared_libraries = feature_names.SUPPORTS_INTERFACE_SHARED_LIBRARIES,
     supports_pic = feature_names.SUPPORTS_PIC,
