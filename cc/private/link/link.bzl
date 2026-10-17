@@ -32,8 +32,6 @@ _TARGET_TYPE = {
     ("objc", "archive"): (LINK_TARGET_TYPE.OBJC_FULLY_LINKED_ARCHIVE, None),
 }
 
-# LINT.IfChange
-
 # IMPORTANT: This function is public API exposed on cc_common module!
 def link(
         *,
@@ -138,7 +136,6 @@ def link(
         executable: None|File
        })
     """
-    # LINT.ThenChange(https://github.com/bazelbuild/bazel/blob/master/src/main/java/com/google/devtools/build/lib/starlarkbuildapi/cpp/CcModuleApi.java)
 
     # TODO(bazel-team): Rename always_link to alwayslink before delisting. Also it looks like the
     # suffix parameter can be removed since we can use `name` for the same thing.

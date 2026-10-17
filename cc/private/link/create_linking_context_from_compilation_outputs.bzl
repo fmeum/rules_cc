@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# LINT.IfChange(forked_exports)
 """
 The cc_common.create_linking_context_from_compilation_outputs function.
 
@@ -92,7 +91,6 @@ def create_linking_context_from_compilation_outputs(
       (`CcLinkingContext`, `CcLinkingOutputs`) A pair.
     """
 
-    # LINT.ThenChange(https://github.com/bazelbuild/bazel/blob/master/src/main/java/com/google/devtools/build/lib/starlarkbuildapi/cpp/CcModuleApi.java)
     # TODO(b/202252560): Fix for swift_library's implicit output, remove rule_kind_cheat.
     if alwayslink and _cc_internal.rule_class(_cc_internal.actions2ctx_cheat(actions)) != "swift_library":
         static_link_type = LINK_TARGET_TYPE.ALWAYS_LINK_STATIC_LIBRARY
