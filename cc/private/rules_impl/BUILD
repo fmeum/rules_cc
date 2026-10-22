@@ -1,4 +1,6 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load(":shared_library_abi.bzl", "shared_library_format")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -52,6 +54,8 @@ bzl_library(
         "cc_test_impl.bzl",
         "objc_import.bzl",
         "objc_library.bzl",
+        "shared_library_abi.bzl",
+        "shared_library_abi_impl.bzl",
     ],
     visibility = [
         "//cc:__subpackages__",
@@ -154,4 +158,17 @@ bzl_library(
     name = "function_providing_rule_bzl",
     srcs = ["function_providing_rule.bzl"],
     visibility = ["//cc:__subpackages__"],
+)
+
+shared_library_format(
+    name = "shared_library_format",
+    format = selects.with_or({
+        "//cc/settings:apple_constraint": "macho",
+        "@platforms//os:android": "elf_unversioned",
+        (
+            "@platforms//cpu:wasm32",
+            "@platforms//cpu:wasm64",
+        ): "other",
+        "//conditions:default": "elf",
+    }),
 )

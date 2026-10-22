@@ -22,6 +22,7 @@ load("//cc/common:cc_shared_library_info.bzl", "CcSharedLibraryInfo")
 load("//cc/common:semantics.bzl", "semantics")
 load("//cc/private:graph_node_info.bzl", "GraphNodeInfo")
 load(":function_providing_rule.bzl", "proxy")
+load(":shared_library_abi.bzl", "SHARED_LIBRARY_ABI_ATTRS")
 
 # TODO(#5200): Add export_define to library_to_link and cc_library
 
@@ -307,7 +308,10 @@ following:
             default = Label("//cc/private/rules_impl/wrappers:cc_shared_library_impl_wrapper"),
             cfg = "exec",
         ),
-    },  # buildifier: disable=unsorted-dict-items
+        "_shared_library_format": attr.label(
+            default = Label("//cc/private/rules_impl:shared_library_format"),
+        ),
+    } | SHARED_LIBRARY_ABI_ATTRS,  # buildifier: disable=unsorted-dict-items
     toolchains = use_cc_toolchain() + semantics.get_runtimes_toolchain(),
     fragments = ["cpp"] + semantics.additional_fragments(),
 )

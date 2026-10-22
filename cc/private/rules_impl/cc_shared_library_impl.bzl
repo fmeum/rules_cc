@@ -24,6 +24,8 @@ load("//cc/common:feature_names.bzl", "feature_names")
 load("//cc/common:semantics.bzl", "semantics")
 load("//cc/private:graph_node_info.bzl", "GraphNodeInfo")
 load(":function_providing_rule.bzl", "wrap_starlark_function")
+load(":shared_library_abi.bzl", "SharedLibraryFormatInfo")
+load(":shared_library_abi_impl.bzl", "shared_library_abi")
 
 # TODO(#5200): Add export_define to library_to_link and cc_library
 
@@ -661,9 +663,25 @@ def _cc_shared_library_impl(ctx):
     for user_link_flag in ctx.attr.user_link_flags:
         user_link_flags.append(ctx.expand_location(user_link_flag, targets = ctx.attr.additional_linker_inputs))
 
+    abi = shared_library_abi(
+        label = ctx.label,
+        shared_lib_name = ctx.attr.shared_lib_name,
+        library_name = ctx.attr.library_name,
+        soversion = ctx.attr.soversion,
+        version = ctx.attr.version,
+        darwin_versions = ctx.attr.darwin_versions,
+        dll_name = ctx.attr.dll_name,
+        version_script = ctx.file.version_script,
+        exported_symbols_list = ctx.file.exported_symbols_list,
+        shared_library_format = ctx.attr._shared_library_format[SharedLibraryFormatInfo].format,
+        feature_configuration = feature_configuration,
+        cc_toolchain = cc_toolchain,
+    )
+    user_link_flags.extend(abi.user_link_flags)
+
     main_output = None
-    if ctx.attr.shared_lib_name:
-        main_output = ctx.actions.declare_file(ctx.attr.shared_lib_name)
+    if abi.basename:
+        main_output = ctx.actions.declare_file(abi.basename)
 
     additional_inputs = []
     additional_outputs = []
@@ -716,6 +734,7 @@ def _cc_shared_library_impl(ctx):
         additional_inputs.append(win_def_file)
 
     additional_inputs.extend(ctx.files.additional_linker_inputs)
+    additional_inputs.extend(abi.additional_inputs)
     linking_outputs = cc_common.link(
         actions = ctx.actions,
         feature_configuration = feature_configuration,
@@ -784,6 +803,11 @@ def _cc_shared_library_impl(ctx):
         library.append(linking_outputs.library_to_link.resolved_symlink_dynamic_library)
     else:
         library.append(linking_outputs.library_to_link.dynamic_library)
+
+    if abi.link_name:
+        link_name = ctx.actions.declare_file(abi.link_name)
+        ctx.actions.symlink(output = link_name, target_file = library[0])
+        additional_output_groups["link_name"] = depset([link_name])
 
     interface_library = []
     if linking_outputs.library_to_link.resolved_symlink_interface_library != None:
