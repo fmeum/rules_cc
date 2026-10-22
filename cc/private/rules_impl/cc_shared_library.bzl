@@ -21,7 +21,7 @@ load("//cc/common:cc_shared_library_hint_info.bzl", "CcSharedLibraryHintInfo")
 load("//cc/common:cc_shared_library_info.bzl", "CcSharedLibraryInfo")
 load("//cc/common:semantics.bzl", "semantics")
 load("//cc/private:graph_node_info.bzl", "GraphNodeInfo")
-load(":function_providing_rule.bzl", "proxy")
+load(":function_providing_rule.bzl", "FunctionInfo", "proxy")
 load(":shared_library_abi.bzl", "SHARED_LIBRARY_ABI_ATTRS")
 
 # TODO(#5200): Add export_define to library_to_link and cc_library
@@ -78,6 +78,35 @@ graph_structure_aspect = aspect(
     required_providers = [[CcInfo], [CcSharedLibraryHintInfo], [ProtoInfo], [platform_common.ToolchainInfo]],
     required_aspect_providers = [[CcInfo], [CcSharedLibraryHintInfo]],
     implementation = _graph_structure_aspect_impl,
+)
+
+def _cc_shared_library_abi_aspect_proxy(target, ctx):
+    return ctx.attr._abi_aspect_impl_delegate[FunctionInfo].func(target, ctx)
+
+# Materializes a cc_library with a cc_shared_library_abi in its aspect_hints as a shared library
+# when it is used in dynamic_deps. The aspect also propagates to the library's dependencies to
+# link those with their own cc_shared_library_abi dynamically.
+cc_shared_library_abi_aspect = aspect(
+    implementation = _cc_shared_library_abi_aspect_proxy,
+    attr_aspects = ["*"],
+    required_providers = [CcInfo],
+    requires = [graph_structure_aspect],
+    attrs = {
+        "_abi_aspect_impl_delegate": attr.label(
+            default = Label("//cc/private/rules_impl/wrappers:cc_shared_library_abi_aspect_impl_wrapper"),
+            cfg = "exec",
+        ),
+        "_def_parser": attr.label(
+            default = Label("@bazel_tools//tools/def_parser:def_parser"),
+            allow_single_file = True,
+            cfg = "exec",
+        ),
+        "_shared_library_format": attr.label(
+            default = Label("//cc/private/rules_impl:shared_library_format"),
+        ),
+    },
+    toolchains = use_cc_toolchain() + semantics.get_runtimes_toolchain(),
+    fragments = ["cpp"] + semantics.additional_fragments(),
 )
 
 cc_shared_library = rule(
@@ -215,7 +244,7 @@ the target's name and the platform. This includes an extension and sometimes a p
 Sometimes you may not want the default name, for example, when loading C++ shared libraries
 for Python the default lib* prefix is often not desired, in which case you can use this
 attribute to choose a custom name."""),
-        "dynamic_deps": attr.label_list(providers = [CcSharedLibraryInfo], doc = """
+        "dynamic_deps": attr.label_list(providers = [[CcSharedLibraryInfo], [CcInfo]], aspects = [cc_shared_library_abi_aspect], doc = """
 These are other <code>cc_shared_library</code> dependencies the current target depends on.
 
 <p>
@@ -356,7 +385,8 @@ def dynamic_deps_initializer(**kwargs):
 dynamic_deps_attrs = {
     "dynamic_deps": attr.label_list(
         allow_files = False,
-        providers = [CcSharedLibraryInfo],
+        providers = [[CcSharedLibraryInfo], [CcInfo]],
+        aspects = [cc_shared_library_abi_aspect],
         doc = """
 These are other <code>cc_shared_library</code> dependencies the current target depends on.
 

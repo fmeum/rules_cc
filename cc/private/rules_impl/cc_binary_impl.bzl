@@ -24,7 +24,7 @@ load("//cc/common:debug_package_info.bzl", "DebugPackageInfo")
 load("//cc/common:feature_names.bzl", "feature_names")
 load("//cc/common:semantics.bzl", "semantics")
 load("//cc/private:graph_node_info.bzl", "GraphNodeInfo")
-load(":cc_shared_library_impl.bzl", "add_unused_dynamic_deps", "build_exports_map_from_only_dynamic_deps", "build_link_once_static_libs_map", "merge_cc_shared_library_infos", "separate_static_and_dynamic_link_libraries", "sort_linker_inputs", "throw_linked_but_not_exported_errors")
+load(":cc_shared_library_impl.bzl", "add_unused_dynamic_deps", "build_exports_map_from_only_dynamic_deps", "build_link_once_static_libs_map", "check_dynamic_deps", "dynamic_dep_runfiles", "merge_cc_shared_library_infos", "separate_static_and_dynamic_link_libraries", "sort_linker_inputs", "throw_linked_but_not_exported_errors")
 load(":function_providing_rule.bzl", "wrap_starlark_function")
 
 _CcLauncherInfo = getattr(cc_common, "launcher_provider", None)
@@ -154,7 +154,7 @@ def _collect_runfiles(ctx, feature_configuration, cc_toolchain, linking_context,
         runtime_objects_for_coverage.extend(_runfiles_function(transitive_info_collection, False).to_list())
 
     for dynamic_dep in ctx.attr.dynamic_deps:
-        builder = builder.merge(dynamic_dep[DefaultInfo].default_runfiles)
+        builder = builder.merge(dynamic_dep_runfiles(dynamic_dep, data = False))
 
     builder = builder.merge_all(runfiles_is_static + runfiles_is_not_static)
     if linking_mode == linker_mode.LINKING_DYNAMIC:
@@ -198,6 +198,7 @@ def _get_providers(ctx):
     return [dep[CcInfo] for dep in all_deps if CcInfo in dep]
 
 def _filter_libraries_that_are_linked_dynamically(ctx, feature_configuration, cc_linking_context):
+    check_dynamic_deps(ctx.attr.dynamic_deps)
     merged_cc_shared_library_infos_list = merge_cc_shared_library_infos(ctx).to_list()
     link_once_static_libs_map = build_link_once_static_libs_map(merged_cc_shared_library_infos_list)
     transitive_exports = build_exports_map_from_only_dynamic_deps(merged_cc_shared_library_infos_list)

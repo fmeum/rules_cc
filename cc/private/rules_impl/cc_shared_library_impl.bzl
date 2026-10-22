@@ -24,7 +24,7 @@ load("//cc/common:feature_names.bzl", "feature_names")
 load("//cc/common:semantics.bzl", "semantics")
 load("//cc/private:graph_node_info.bzl", "GraphNodeInfo")
 load(":function_providing_rule.bzl", "wrap_starlark_function")
-load(":shared_library_abi.bzl", "SharedLibraryFormatInfo")
+load(":shared_library_abi.bzl", "CcSharedLibraryAbiInfo", "CcSharedLibraryRuntimeInfo", "SharedLibraryFormatInfo")
 load(":shared_library_abi_impl.bzl", "shared_library_abi")
 
 # TODO(#5200): Add export_define to library_to_link and cc_library
@@ -597,7 +597,31 @@ def _add_unused_dynamic_deps(ctx, unused_dynamic_linker_inputs, add_linker_input
                 topologically_sorted_labels.append(dynamic_linker_input_owner)
     return linker_inputs_count
 
+def dynamic_dep_runfiles(dep, data):
+    """Returns the runfiles of a target in dynamic_deps.
+
+    Args:
+        dep: (Target) A cc_shared_library or a cc_library materialized by
+            cc_shared_library_abi_aspect.
+        data: (bool) Whether to return the data runfiles instead of the default runfiles.
+
+    Returns:
+        (runfiles)
+    """
+    if CcSharedLibraryRuntimeInfo in dep:
+        return dep[CcSharedLibraryRuntimeInfo].runfiles
+    return dep[DefaultInfo].data_runfiles if data else dep[DefaultInfo].default_runfiles
+
+def check_dynamic_deps(dynamic_deps):
+    for dep in dynamic_deps:
+        if CcSharedLibraryInfo not in dep:
+            fail(
+                "{} is neither a cc_shared_library nor a cc_library with a cc_shared_library_abi in its aspect_hints".format(dep.label),
+                attr = "dynamic_deps",
+            )
+
 def _cc_shared_library_impl(ctx):
+    check_dynamic_deps(ctx.attr.dynamic_deps)
     if not cc_common.check_experimental_cc_shared_library():
         if len(ctx.attr.static_deps):
             fail(
@@ -762,7 +786,7 @@ def _cc_shared_library_impl(ctx):
         files = runfiles_files,
     )
     for dep in ctx.attr.dynamic_deps:
-        runfiles = runfiles.merge(dep[DefaultInfo].data_runfiles)
+        runfiles = runfiles.merge(dynamic_dep_runfiles(dep, data = True))
 
     if feature_configuration.is_enabled(feature_names.COPY_DYNAMIC_LIBRARIES_TO_BINARY):
         libraries_to_copy = []
@@ -838,6 +862,94 @@ def _cc_shared_library_impl(ctx):
         ),
     ]
 
+_ShadowedSharedLibrariesInfo = provider(
+    doc = "The nearest dependencies of a target that are materialized as shared libraries.",
+    fields = {"targets": "(dict[str, Target]) By label."},
+)
+
+def _collect_materialized_deps(ctx):
+    targets = {}
+    for fieldname in dir(ctx.rule.attr):
+        if fieldname == "aspect_hints":
+            continue
+        deps = getattr(ctx.rule.attr, fieldname, None)
+        for dep in (deps if type(deps) == "list" else [deps]):
+            if type(dep) != "Target":
+                continue
+
+            # Only the dependency edge carries the aspect's own providers, the target passed to the
+            # aspect implementation doesn't.
+            if CcSharedLibraryInfo in dep:
+                targets[str(dep.label)] = dep
+            elif _ShadowedSharedLibrariesInfo in dep:
+                targets |= dep[_ShadowedSharedLibrariesInfo].targets
+    return targets
+
+def _cc_shared_library_abi_aspect_impl(target, ctx):
+    materialized_deps = _collect_materialized_deps(ctx)
+    abi = None
+    for hint in getattr(ctx.rule.attr, "aspect_hints", []):
+        if CcSharedLibraryAbiInfo in hint:
+            abi = hint[CcSharedLibraryAbiInfo]
+    if not abi:
+        return [_ShadowedSharedLibrariesInfo(targets = materialized_deps)]
+
+    # Run the cc_shared_library implementation on a view of the aspect's context. The label of
+    # the shared library differs from the library's so that their outputs and linker inputs
+    # don't clash.
+    rule_ctx = struct(
+        attr = struct(
+            deps = [target],
+            roots = [],
+            static_deps = [],
+            dynamic_deps = materialized_deps.values(),
+            exports_filter = abi.exports_filter,
+            user_link_flags = [],
+            additional_linker_inputs = [],
+            shared_lib_name = "",
+            win_def_file = abi.win_def_file,
+            library_name = abi.library_name or target.label.name,
+            soversion = abi.soversion,
+            version = abi.version,
+            darwin_versions = abi.darwin_versions,
+            dll_name = abi.dll_name,
+            tags = getattr(ctx.rule.attr, "tags", []),
+            _def_parser = ctx.attr._def_parser,
+            _shared_library_format = ctx.attr._shared_library_format,
+        ),
+        file = struct(
+            win_def_file = abi.win_def_file,
+            version_script = abi.version_script,
+            exported_symbols_list = abi.exported_symbols_list,
+            _def_parser = ctx.file._def_parser,
+        ),
+        files = struct(additional_linker_inputs = []),
+        actions = ctx.actions,
+        label = target.label.same_package_label(target.label.name + ".shared"),
+        features = ctx.features,
+        disabled_features = ctx.disabled_features,
+        configuration = ctx.configuration,
+        bin_dir = ctx.bin_dir,
+        var = ctx.var,
+        fragments = ctx.fragments,
+        toolchains = ctx.toolchains,
+        runfiles = ctx.runfiles,
+        expand_location = ctx.expand_location,
+        package_relative_label = Label,
+    )
+    default_info, output_group_info, cc_shared_library_info = _cc_shared_library_impl(rule_ctx)
+    output_groups = {
+        "cc_shared_library_" + name: getattr(output_group_info, name)
+        for name in dir(output_group_info)
+        if name not in ("to_json", "to_proto")
+    }
+    return [
+        cc_shared_library_info,
+        CcSharedLibraryRuntimeInfo(runfiles = default_info.default_runfiles),
+        _ShadowedSharedLibrariesInfo(targets = {}),
+        OutputGroupInfo(**output_groups),
+    ]
+
 for_testing_dont_use_check_if_target_under_path = _check_if_target_under_path
 merge_cc_shared_library_infos = _merge_cc_shared_library_infos
 build_link_once_static_libs_map = _build_link_once_static_libs_map
@@ -849,3 +961,4 @@ add_unused_dynamic_deps = _add_unused_dynamic_deps
 
 cc_shared_library_impl = _cc_shared_library_impl
 cc_shared_library_impl_wrapper = wrap_starlark_function(_cc_shared_library_impl)
+cc_shared_library_abi_aspect_impl_wrapper = wrap_starlark_function(_cc_shared_library_abi_aspect_impl)
