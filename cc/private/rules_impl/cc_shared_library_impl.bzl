@@ -617,7 +617,7 @@ def _cc_shared_library_impl(ctx):
     feature_configuration = cc_common.configure_features(
         ctx = ctx,
         cc_toolchain = cc_toolchain,
-        requested_features = ctx.features + [feature_names.FORCE_NO_WHOLE_ARCHIVE],
+        requested_features = ctx.features + [feature_names.FORCE_NO_WHOLE_ARCHIVE, feature_names.SET_SONAME],
         unsupported_features = ctx.disabled_features,
     )
 
