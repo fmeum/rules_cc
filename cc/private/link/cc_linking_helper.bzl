@@ -280,6 +280,7 @@ def _create_dynamic_link_actions(
             dynamic_link_type,
             cc_toolchain,
             linked_dll_name_suffix,
+            directory = _NODEPS_DIRECTORY if dynamic_link_type == LINK_TARGET_TYPE.NODEPS_DYNAMIC_LIBRARY else "",
         )
 
     so_interface = None
@@ -291,7 +292,13 @@ def _create_dynamic_link_actions(
         cc_toolchain._cpp_configuration.interface_shared_objects()
     )
     if emit_interface_shared_libraries:
-        so_interface, _ = _get_linked_artifact(actions, name, LINK_TARGET_TYPE.INTERFACE_DYNAMIC_LIBRARY, cc_toolchain)
+        so_interface, _ = _get_linked_artifact(
+            actions,
+            name,
+            LINK_TARGET_TYPE.INTERFACE_DYNAMIC_LIBRARY,
+            cc_toolchain,
+            directory = _NODEPS_DIRECTORY if dynamic_link_type == LINK_TARGET_TYPE.NODEPS_DYNAMIC_LIBRARY else "",
+        )
 
         # TODO(b/28946988): Remove this hard-coded flag.
         if not feature_configuration.is_enabled(feature_names.TARGETS_WINDOWS) and not feature_configuration.is_enabled(feature_names.SET_SONAME):
@@ -515,7 +522,11 @@ def _construct_dynamic_library_to_link(
     return library_to_link
 
 # TODO(b/338618120): There's a second get_linked_artifact in cc_helper. Simplify this one and converge the two.
-def _get_linked_artifact(actions, name, link_target_type, cc_toolchain, linked_dll_name_suffix = ""):
+# cc_library's own dynamic library is only consumed through solib symlinks, so it lives in a
+# subdirectory to leave lib<name>.so and its versioned variants to cc_shared_library.
+_NODEPS_DIRECTORY = "_nodeps"
+
+def _get_linked_artifact(actions, name, link_target_type, cc_toolchain, linked_dll_name_suffix = "", directory = ""):
     maybe_pic_name = name
     if link_target_type.is_pic:
         maybe_pic_name = _cc_internal.get_artifact_name_for_category(
@@ -545,8 +556,9 @@ def _get_linked_artifact(actions, name, link_target_type, cc_toolchain, linked_d
     # TODO(b/331164666): create a fail action if the name doesn't match linux default name
     # see getLinuxLinkedArtifact
 
-    file = actions.declare_file(linked_name)
-    return file, file.short_path[:-len(linked_name)] + "lib" + name
+    path = paths.join(directory, linked_name) if directory else linked_name
+    file = actions.declare_file(path)
+    return file, file.short_path[:-len(path)] + "lib" + name
 
 def _create_no_pic_and_pic_static_libs_actions(
         actions,

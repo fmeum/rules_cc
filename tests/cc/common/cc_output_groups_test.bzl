@@ -92,7 +92,7 @@ def _test_static_and_dynamic_library_output_groups_impl(env, target):
         "{package}/{test_name}/liblib.a",
     ])
     assert_target.output_group("dynamic_library").contains_exactly([
-        "{package}/{test_name}/liblib.so",
+        "{package}/_nodeps/{test_name}/liblib.so",
     ])
 
 def _test_shared_and_dynamic_library_output_groups(name, **kwargs):
@@ -118,7 +118,7 @@ def _test_shared_and_dynamic_library_output_groups_impl(env, target):
         "{package}/{test_name}/liblib.lo",
     ])
     assert_target.output_group("dynamic_library").contains_exactly([
-        "{package}/{test_name}/liblib.so",
+        "{package}/_nodeps/{test_name}/liblib.so",
     ])
 
 def _test_module_output_groups(name, **kwargs):

@@ -262,7 +262,7 @@ def _test_interface_output_for_dynamic_library(name, **kwargs):
 
 def _test_interface_output_for_dynamic_library_impl(env, target):
     assert_link_action = env.expect.that_target(target).action_generating(
-        "{package}/{test_name}/libfoo.so",
+        "{package}/_nodeps/{test_name}/libfoo.so",
     )
     assert_link_action.mnemonic().equals("CppLink")
     assert_link_action.inputs().contains_predicate(
@@ -490,7 +490,7 @@ def _test_cc_library_linkopts_in_shared_library_impl(env, target):
     assert_archive_link_action.argv().contains_none_of(linkopts)
 
     assert_so_link_action = env.expect.that_target(target).action_generating(
-        "{package}/{test_name}/libfoo.so",
+        "{package}/_nodeps/{test_name}/libfoo.so",
     )
     assert_so_link_action.mnemonic().equals("CppLink")
     assert_so_link_action.argv().contains_at_least(linkopts)

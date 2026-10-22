@@ -24,7 +24,7 @@ def _cc_binary_setup(name):
     )
 
 def _cc_library_nodeps_dynamic_library_action(env, target):
-    return env.expect.that_target(target).action_generating("{package}/lib{name}.so")
+    return env.expect.that_target(target).action_generating("{package}/_nodeps/lib{name}.so")
 
 def _cc_library_static_library_action(env, target):
     return env.expect.that_target(target).action_generating("{package}/lib{name}.a")
@@ -216,7 +216,7 @@ def _test_no_ifso_building_when_thin_lto_indexing(name):
 
 def _test_no_ifso_building_when_thin_lto_indexing_impl(env, target):
     action = env.expect.that_target(target).action_generating(
-        "{package}/lib{name}.so-lto-final.params",
+        "{package}/_nodeps/lib{name}.so-lto-final.params",
     )
     action.argv().contains("--generate-interface-library=no")
     action.argv().contains("--interface-library-input=ignored")
@@ -266,7 +266,7 @@ def _test_output_execpath_is_not_exposed_when_thin_lto_indexing(name):
 def _test_output_execpath_is_not_exposed_when_thin_lto_indexing_impl(env, target):
     # TODO(b/525692821): Consider using build graph traversal once available to find the LTO backend action.
     action = env.expect.that_target(target).action_generating(
-        "{package}/lib{name}.so-lto-final.params",
+        "{package}/_nodeps/lib{name}.so-lto-final.params",
     )
     action.argv().not_contains_predicate(
         matching.custom(

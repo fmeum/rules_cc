@@ -315,7 +315,7 @@ def _test_thin_lto_no_linkstatic_impl(env, targets):
     lib_link_action.mnemonic().equals("CppLink")
 
     # Construct library LTO paths
-    library_lto_dir = "{package}/{test_name}/liblib.so.lto".format(
+    library_lto_dir = "{package}/_nodeps/{test_name}/liblib.so.lto".format(
         package = package,
         test_name = test_name,
     )
@@ -325,7 +325,7 @@ def _test_thin_lto_no_linkstatic_impl(env, targets):
         package = package,
         lib_target_name = lib_target_name,
     )
-    lib_params_path = "{package}/{test_name}/liblib.so-lto-final.params".format(
+    lib_params_path = "{package}/_nodeps/{test_name}/liblib.so-lto-final.params".format(
         package = package,
         test_name = test_name,
     )
@@ -594,7 +594,7 @@ def _test_thin_lto_no_linkstatic_fission_impl(env, targets):
     lib_target_name = test_name + "/lib"
 
     # Library LTO backend
-    library_lto_dir = "{package}/{test_name}/liblib.so.lto".format(
+    library_lto_dir = "{package}/_nodeps/{test_name}/liblib.so.lto".format(
         package = package,
         test_name = test_name,
     )
