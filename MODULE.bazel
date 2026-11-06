@@ -8,6 +8,7 @@ bazel_dep(name = "apple_support", version = "2.9.1")
 bazel_dep(name = "bazel_features", version = "1.50.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.0")
 bazel_dep(name = "platforms", version = "0.0.10")
+bazel_dep(name = "platforms_contrib", version = "1.0.0-alpha.0")
 bazel_dep(name = "protobuf", version = "27.0", repo_name = "com_google_protobuf")
 
 cc_configure = use_extension("//cc:extensions.bzl", "cc_configure_extension")
@@ -45,6 +46,13 @@ archive_override(
 )
 
 bazel_dep(name = "stardoc", version = "0.8.0", dev_dependency = True)
+
+# Prototype: Pending bazel-contrib/platforms_contrib#28 and its follow-ups.
+git_override(
+    module_name = "platforms_contrib",
+    commit = "e6d2a9faf6e93336a2b5307e93906b1d69c2ce2f",
+    remote = "https://github.com/fmeum/platforms_contrib.git",
+)
 
 # Compatibility layer
 compat = use_extension("//cc:extensions.bzl", "compatibility_proxy")
