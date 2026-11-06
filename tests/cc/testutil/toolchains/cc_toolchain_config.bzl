@@ -878,6 +878,8 @@ _linkage_features = {
         FEATURE_NAMES.libcxx_runtime,
         FEATURE_NAMES.libstdcxx_runtime,
         FEATURE_NAMES.msvcp_runtime,
+        FEATURE_NAMES.no_cxx_runtime,
+        FEATURE_NAMES.no_libc,
         FEATURE_NAMES.static_cxx_runtime,
         FEATURE_NAMES.static_link_msvcrt,
         FEATURE_NAMES.system_cxx_runtime,

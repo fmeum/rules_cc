@@ -28,6 +28,7 @@ _CXX_RUNTIME_FEATURES = [
     FEATURE_NAMES.dynamic_cxx_runtime,
     FEATURE_NAMES.libcxx_runtime,
     FEATURE_NAMES.libstdcxx_runtime,
+    FEATURE_NAMES.no_cxx_runtime,
     FEATURE_NAMES.static_cxx_runtime,
     FEATURE_NAMES.system_cxx_runtime,
 ]
@@ -36,6 +37,7 @@ _UNIX_TOOLCHAIN = [
     FEATURE_NAMES.do_not_split_linking_cmdline,
     FEATURE_NAMES.dynamic_linking_mode,
     FEATURE_NAMES.fully_static_link,
+    FEATURE_NAMES.no_libc,
     FEATURE_NAMES.static_link_cpp_runtimes,
     FEATURE_NAMES.static_linking_mode,
     FEATURE_NAMES.supports_dynamic_linker,
@@ -166,19 +168,25 @@ _exec_preferred = rule(
 )
 
 def _select_subject_impl(ctx):
-    return [DefaultInfo(), _SelectedInfo(preferred = ctx.attr.preferred, effective = ctx.attr.effective)]
+    return [DefaultInfo(), _SelectedInfo(preferred = ctx.attr.preferred, effective = ctx.attr.effective, libc = ctx.attr.libc)]
 
-_SelectedInfo = provider(doc = "The result of selecting on the settings.", fields = ["preferred", "effective"])
+_SelectedInfo = provider(doc = "The result of selecting on the settings.", fields = ["preferred", "effective", "libc"])
 
 _select_subject = rule(
     implementation = _select_subject_impl,
-    attrs = {"preferred": attr.string(), "effective": attr.string()},
+    attrs = {"preferred": attr.string(), "effective": attr.string(), "libc": attr.string()},
 )
 
 def _expect_selected(preferred, effective):
     def impl(env, target):
         env.expect.that_str(target[_SelectedInfo].preferred).equals(preferred)
         env.expect.that_str(target[_SelectedInfo].effective).equals(effective)
+
+    return impl
+
+def _expect_selected_libc(libc):
+    def impl(env, target):
+        env.expect.that_str(target[_SelectedInfo].libc).equals(libc)
 
     return impl
 
@@ -204,6 +212,9 @@ def _helpers(name):
     cc_binary(t("bin_no_fully_static"), features = ["-" + FEATURE_NAMES.fully_static_link], **common)
     cc_test(t("test_static_cxx_runtime"), features = [FEATURE_NAMES.static_cxx_runtime], **common)
     cc_binary(t("bin_dynamic_cxx_runtime"), features = [FEATURE_NAMES.dynamic_cxx_runtime], **common)
+    cc_binary(t("bin_no_libc"), features = [FEATURE_NAMES.no_libc], **common)
+    cc_binary(t("bin_with_libc"), features = ["-" + FEATURE_NAMES.no_libc], **common)
+    cc_binary(t("bin_no_cxx_runtime"), features = [FEATURE_NAMES.no_cxx_runtime], **common)
     cc_binary(t("bin_static_msvcrt"), features = [FEATURE_NAMES.static_link_msvcrt], **common)
     cc_binary(t("bin_dynamic_msvcrt"), features = [FEATURE_NAMES.dynamic_link_msvcrt], **common)
     cc_binary(t("bin_dynamic_deps"), srcs = ["main.cc"], dynamic_deps = [t("shared")], deps = [t("lib")])
@@ -229,6 +240,7 @@ def _helpers(name):
             "//cc/cxx_runtime:static_preferred": "static",
             "//cc/cxx_runtime:system_preferred": "system",
             "//cc/cxx_runtime:bundled_preferred": "bundled",
+            "//cc/cxx_runtime:none_preferred": "none",
             "//cc/cxx_runtime:unset": "unset",
             "//conditions:default": "other",
         }),
@@ -236,6 +248,11 @@ def _helpers(name):
             "//cc/cxx_runtime:static": "static",
             "//cc/cxx_runtime:dynamic": "dynamic",
             "//conditions:default": "unknown",
+        }),
+        libc = select({
+            "//cc/libc:glibc": "glibc",
+            "//cc/libc:none": "none",
+            "//conditions:default": "other",
         }),
     )
     util.helper_target(_exec_preferred, name = t("exec_preferred"))
@@ -303,6 +320,15 @@ def linkage_test_suite(name):
         ("windows_vcredist_declared", "windows_vcredist", None, None, ["msvcp"], _expect_cxx_runtime("resolved", "msvcp", "system")),
         ("windows_vcredist_undeclared", "windows", None, None, ["msvcp", "bundled-msvcp"], _expect_cxx_runtime("resolved", "msvcp", "bundled")),
         ("windows_static_crt_rules_out_dynamic", "windows_vcredist", None, ["static-ucrt"], ["msvcp", "static-msvcp"], _expect_cxx_runtime("resolved", "msvcp", "static")),
+        ("none_on_hosted_libc", "glibc", None, None, ["none"], _expect_cxx_runtime("resolved", "none", "none")),
+        ("none_as_fallback", "glibc", None, None, ["libstdc++", "none"], _expect_cxx_runtime("resolved", "none", "none")),
+        ("none_on_macos", "macos", None, None, ["none"], _expect_cxx_runtime("resolved", "none", "none")),
+        ("no_libc_implies_none", "glibc", ["none"], None, None, _expect_cxx_runtime("resolved", "none", "none")),
+        ("no_libc_falls_through_to_none", "glibc", ["none"], None, ["static-libc++", "none"], _expect_cxx_runtime("resolved", "none", "none")),
+        ("no_libc_rules_out_static", "glibc", ["none"], None, ["static-libc++"], _expect_cxx_runtime("unresolved", diagnostic = "a C++ runtime can't be used without a libc")),
+        ("no_libc_rules_out_system", "glibc_libstdcxx", ["none"], None, ["libstdc++"], _expect_cxx_runtime("unresolved", diagnostic = "Rank \"none\"")),
+        ("no_crt_implies_none", "windows", None, ["none"], None, _expect_cxx_runtime("resolved", "none", "none")),
+        ("no_crt_rules_out_msvcp", "windows", None, ["none"], ["static-msvcp"], _expect_cxx_runtime("unresolved", diagnostic = "a C++ runtime can't be used without a libc")),
     ]:
         test_name = "{}_resolve_{}_test".format(name, test)
         settings = {"//command_line_option:platforms": str(Label(":{}_{}".format(name, platform)))}
@@ -347,6 +373,31 @@ def linkage_test_suite(name):
     add_failure("libc_static_dynamic_runtime_override", "bin_dynamic_cxx_runtime", "conflicts with", libc = ["static-glibc"], cxx = ["static-libc++"])
     add_failure("libc_flavor_mismatch", "bin", "targets glibc, but", libc = ["static-musl"])
 
+    ### No libc.
+
+    no_libc = _expect_link(runtime = "none", dep = "static", mode = "static", flags = ["<no_libc>", "<no_cxx_runtime>", "<fully_static_link>"], no_flags = ["<static_cxx_runtime>", "<dynamic_cxx_runtime>"])
+    add("no_libc_binary", "bin", no_libc, libc = ["none"])
+    add("no_libc_test", "test", no_libc, libc = ["none"])
+    add("no_libc_linkstatic_0", "bin_linkstatic_0", no_libc, libc = ["none"])
+    add("no_libc_platform_without_libc", "bin", no_libc, platform = "linux", libc = ["none"])
+    add("no_libc_compile", "lib", _expect_compile_flags(["<no_libc>", "<no_cxx_runtime>"]), libc = ["none"])
+    add("no_libc_library_has_no_shared_output", "lib", _expect_only_static_outputs, libc = ["none"])
+    add("no_libc_allows_shared_library", "shared", _expect_shared_library, libc = ["none"])
+    add("no_libc_allows_linkshared", "bin_linkshared", _expect_shared_library_link, libc = ["none"])
+    add("no_libc_toolchain_reports_none", "select", _expect_selected_libc("none"), libc = ["none"])
+    add("hosted_toolchain_reports_its_libc", "select", _expect_selected_libc("glibc"))
+    add_failure("no_libc_dynamic_deps", "bin_dynamic_deps", "can't depend on these shared libraries: ", libc = ["none"])
+    add_failure("no_libc_shared_only_import", "bin_shared_only_fully_static", "libfoo.so", libc = ["none"])
+    add_failure("no_libc_disabled_fully_static", "bin_no_fully_static", "Disabling the feature 'fully_static_link' conflicts with", libc = ["none"])
+    add_failure("no_libc_disabled_feature", "bin_with_libc", "Disabling the feature 'no_libc' conflicts with", libc = ["none"])
+    add_failure("no_libc_dynamic_mode", "bin", "--dynamic_mode=fully conflicts with", libc = ["none"], flags = {_DYNAMIC_MODE: "fully"})
+    add_failure("no_libc_static_runtime_override", "test_static_cxx_runtime", "The feature 'static_cxx_runtime' conflicts with the choice of no C++ runtime", libc = ["none"])
+    add_failure("no_libc_dynamic_runtime_override", "bin_dynamic_cxx_runtime", "The feature 'dynamic_cxx_runtime' conflicts with the choice of no C++ runtime", libc = ["none"])
+    add_failure("no_libc_cxx_ranking", "bin", "None of the C++ runtime options", libc = ["none"], cxx = ["static-libc++"])
+    add_failure("no_libc_feature_on_hosted_libc", "bin_no_libc", "The feature 'no_libc' conflicts with --@platforms_contrib//os/linux/libc:preference, which chose glibc", libc = ["glibc"])
+    add_failure("no_libc_legacy_toolchain", "bin", "can't deliver the choice made by --@platforms_contrib//os/linux/libc:preference since it doesn't define the feature 'no_libc'", toolchain = _LEGACY_TOOLCHAIN + [FEATURE_NAMES.fully_static_link], libc = ["none"])
+    add_failure("no_libc_without_no_cxx_runtime", "bin", "can't deliver the choice made by --@platforms_contrib//os/linux/libc:preference since it doesn't define the feature 'no_cxx_runtime'", toolchain = _LEGACY_TOOLCHAIN + [FEATURE_NAMES.fully_static_link, FEATURE_NAMES.no_libc], libc = ["none"])
+
     ### The C++ runtime preference.
 
     static_runtime = _expect_link(runtime = "static", dep = "static", mode = "static", flags = ["<static_cxx_runtime>", "<libcxx_runtime>"], no_flags = ["<dynamic_cxx_runtime>"])
@@ -370,6 +421,15 @@ def linkage_test_suite(name):
     add("cxx_system_binary", "bin", system_with_static_deps, platform = "glibc_libstdcxx", cxx = ["libstdc++"])
     add("cxx_system_test", "test", _expect_link(runtime = "none", dep = "dynamic", mode = "dynamic"), platform = "glibc_libstdcxx", cxx = ["libstdc++"])
     add_failure("cxx_unresolved", "bin", "None of the C++ runtime options", cxx = ["libstdc++"])
+
+    # The libc stays and the libraries of the binary follow the link mode.
+    add("cxx_none_binary", "bin", _expect_link(runtime = "none", dep = "static", mode = "static", flags = ["<no_cxx_runtime>"], no_flags = ["<no_libc>", "<fully_static_link>", "<static_cxx_runtime>", "<dynamic_cxx_runtime>"]), cxx = ["none"])
+    add("cxx_none_test", "test", _expect_link(runtime = "none", dep = "dynamic", mode = "dynamic", flags = ["<no_cxx_runtime>"]), cxx = ["none"])
+    add("cxx_none_library_keeps_shared_output", "lib", _expect_dynamic_outputs, cxx = ["none"])
+    add("cxx_none_per_target_on_unset_ranking", "bin_no_cxx_runtime", _expect_compile_flags(["<no_cxx_runtime>"]))
+    add_failure("cxx_none_static_override", "test_static_cxx_runtime", "The feature 'static_cxx_runtime' conflicts with the choice of no C++ runtime", cxx = ["none"])
+    add_failure("cxx_none_feature_on_static_ranking", "bin_no_cxx_runtime", "The feature 'no_cxx_runtime' conflicts with --@rules_cc//cc/cxx_runtime:preference", cxx = ["static-libc++"])
+    add_failure("cxx_none_legacy_toolchain", "bin", "can't deliver the choice made by --@rules_cc//cc/cxx_runtime:preference since it doesn't define the feature 'no_cxx_runtime'", toolchain = _LEGACY_TOOLCHAIN, cxx = ["none"])
 
     # static_libgcc would add a second unwinder to a binary that uses a shared C++ runtime.
     add("cxx_bundled_drops_static_libgcc", "bin", _expect_link(runtime = "dynamic", dep = "static", mode = "static", no_flags = ["-static-libgcc"]), cxx = ["bundled-libc++"])
@@ -404,6 +464,16 @@ def linkage_test_suite(name):
     add_failure("win_rejects_fully_static_override", "bin_fully_static", "The C++ runtime affects compilation on Windows", crt = ["ucrt"], cxx = ["bundled-msvcp"], **win)
     add_failure("win_flavor_mismatch", "bin", "targets ucrt, but", crt = ["msvcrt"], **win)
 
+    # Without a CRT, dynamic linking still works and there is no fully static link.
+    add("win_no_crt_compile", "lib", _expect_compile_flags(["<no_libc>", "<no_cxx_runtime>"], ["<static_link_msvcrt>", "<dynamic_link_msvcrt>", "<fully_static_link>"]), crt = ["none"], **win)
+    add("win_no_crt_keeps_shared_library_output", "lib", _expect_dynamic_outputs_on_windows, crt = ["none"], **win)
+    add("win_no_crt_allows_shared_library", "shared", _expect_shared_library, crt = ["none"], **win)
+    add("win_no_crt_reports_none", "select", _expect_selected_libc("none"), crt = ["none"], **win)
+    add_failure("win_no_crt_rejects_static_feature", "bin_static_msvcrt", "The feature 'static_link_msvcrt' conflicts with", crt = ["none"], **win)
+    add_failure("win_no_crt_rejects_dynamic_feature", "bin_dynamic_msvcrt", "The feature 'dynamic_link_msvcrt' conflicts with", crt = ["none"], **win)
+    add_failure("win_no_crt_requires_feature", "bin", "can't deliver the choice made by --@platforms_contrib//os/windows/crt:preference since it doesn't define the feature 'no_libc'", platform = "windows", toolchain = [f for f in _WINDOWS_TOOLCHAIN if f != FEATURE_NAMES.no_libc], crt = ["none"])
+    add_failure("win_no_libc_feature_on_ucrt", "bin_no_libc", "The feature 'no_libc' conflicts with --@platforms_contrib//os/windows/crt:preference, which chose ucrt", crt = ["ucrt"], **win)
+
     # A static CRT implies a static C++ runtime even if the ranking doesn't say so.
     add("win_static_crt_implies_static_runtime", "test", _expect_link_only_runtime("static"), crt = ["static-ucrt"], **win)
 
@@ -415,6 +485,7 @@ def linkage_test_suite(name):
     add("select_unset", "select", _expect_selected("unset", "unknown"))
     add("select_static", "select", _expect_selected("static", "static"), cxx = ["static-libc++"])
     add("select_bundled", "select", _expect_selected("bundled", "dynamic"), cxx = ["bundled-libc++"])
+    add("select_none", "select", _expect_selected("none", "unknown"), cxx = ["none"])
 
     native.test_suite(name = name, tests = [":" + test for test in tests])
 
@@ -433,3 +504,6 @@ def _expect_dynamic_outputs_on_windows(env, target):
 
 def _expect_shared_library(env, target):
     env.expect.that_target(target).default_outputs().contains_predicate(matching.file_basename_contains("libshared"))
+
+def _expect_shared_library_link(env, target):
+    env.expect.that_target(target).action_named("CppLink")

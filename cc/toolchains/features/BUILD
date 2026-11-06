@@ -67,6 +67,7 @@ filegroup(
     srcs = glob(["**"]) + [
         "//cc/toolchains/features/cxx_runtime:srcs",
         "//cc/toolchains/features/legacy:srcs",
+        "//cc/toolchains/features/libc:srcs",
     ],
     visibility = ["//visibility:public"],
 )

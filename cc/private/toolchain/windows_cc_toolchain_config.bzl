@@ -1411,6 +1411,37 @@ def _impl(ctx):
             ],
         )
 
+        # /GS needs the CRT for its security cookie.
+        no_libc_feature = feature(
+            name = "no_libc",
+            flag_sets = [
+                flag_set(
+                    actions = all_compile_actions,
+                    flag_groups = [flag_group(flags = ["/Zl", "/GS-"])],
+                ),
+                flag_set(
+                    actions = all_link_actions,
+                    flag_groups = [flag_group(flags = ["/NODEFAULTLIB"])],
+                ),
+            ],
+        )
+
+        # The headers of the C++ runtime request these libraries, so they can't be omitted.
+        no_cxx_runtime_feature = feature(
+            name = "no_cxx_runtime",
+            flag_sets = [
+                flag_set(
+                    actions = all_link_actions,
+                    flag_groups = [flag_group(flags = [
+                        "/NODEFAULTLIB:msvcprt.lib",
+                        "/NODEFAULTLIB:msvcprtd.lib",
+                        "/NODEFAULTLIB:libcpmt.lib",
+                        "/NODEFAULTLIB:libcpmtd.lib",
+                    ])],
+                ),
+            ],
+        )
+
         features = [
             # /MT and /MD also select the C++ runtime, so these don't add any flags.
             feature(name = "msvcp_runtime"),
@@ -1418,6 +1449,8 @@ def _impl(ctx):
             feature(name = "dynamic_cxx_runtime"),
             feature(name = "system_cxx_runtime"),
             hybrid_crt_feature,
+            no_libc_feature,
+            no_cxx_runtime_feature,
             no_legacy_features_feature,
             nologo_feature,
             has_configured_linker_path_feature,

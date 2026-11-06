@@ -414,6 +414,7 @@ cc_toolchain(
     coverage_files = "coverage-file",
     dwp_files = "dwp-k8",
     dynamic_runtime_lib = select({
+        "//cc/cxx_runtime:none_preferred": ":empty_runtime_lib",
         "//cc/cxx_runtime:system_preferred": ":empty_runtime_lib",
         "//conditions:default": ":mock_dynamic_runtime_lib",
     }),
@@ -422,7 +423,10 @@ cc_toolchain(
     module_map = "crosstool.cppmap",
     objcopy_files = "objcopy-k8",
     output_licenses = ["unencumbered"],
-    static_runtime_lib = ":mock_static_runtime_lib",
+    static_runtime_lib = select({
+        "//cc/cxx_runtime:none_preferred": ":empty_runtime_lib",
+        "//conditions:default": ":mock_static_runtime_lib",
+    }),
     strip_files = ":every-file",
     supports_header_parsing = 1,
     toolchain_config = ":k8-compiler_config",

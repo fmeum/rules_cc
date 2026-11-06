@@ -246,14 +246,24 @@ _STATIC_CXX_RUNTIME_LIBS = {
 
 def _cxx_runtime_features(link_libs, is_linux):
     """Returns the features for the C++ runtime options the default link flags can deliver."""
+    no_cxx_runtime_feature = feature(
+        name = "no_cxx_runtime",
+        flag_sets = [
+            flag_set(
+                actions = all_cpp_compile_actions,
+                flag_groups = [flag_group(flags = ["-nostdinc++"])],
+            ),
+        ],
+    )
     flavor_features = [
         feature(name = feature_name)
         for lib, feature_name in _CXX_RUNTIME_FLAVOR_FEATURES.items()
         if lib in link_libs
     ]
     if not flavor_features:
-        return []
+        return [no_cxx_runtime_feature]
     features = flavor_features + [
+        no_cxx_runtime_feature,
         feature(name = "dynamic_cxx_runtime"),
         feature(name = "system_cxx_runtime"),
     ]
@@ -269,6 +279,22 @@ def _cxx_runtime_features(link_libs, is_linux):
             ],
         ))
     return features
+
+# GCC and Clang can't hide the libc headers while keeping their own without knowing the paths of the
+# latter, so code that includes the former only fails to link.
+_no_libc_feature = feature(
+    name = "no_libc",
+    flag_sets = [
+        flag_set(
+            actions = all_compile_actions,
+            flag_groups = [flag_group(flags = ["-ffreestanding", "-fno-stack-protector", "-U_FORTIFY_SOURCE"])],
+        ),
+        flag_set(
+            actions = all_link_actions + lto_index_actions,
+            flag_groups = [flag_group(flags = ["-nostdlib"])],
+        ),
+    ],
+)
 
 def _sanitizer_feature(name = "", specific_compile_flags = [], specific_link_flags = []):
     return feature(
@@ -1398,14 +1424,19 @@ def _impl(ctx):
     )
 
     cxx_runtime_features = _cxx_runtime_features(ctx.attr.link_libs, is_linux)
+    link_libs_without_cxx_runtime = [
+        lib
+        for lib in ctx.attr.link_libs
+        if lib not in _STATIC_CXX_RUNTIME_LIBS
+    ]
     default_link_libs_feature = feature(
         name = "default_link_libs",
         enabled = True,
-        flag_sets = [
+        flag_sets = ([
             flag_set(
                 actions = all_link_actions + lto_index_actions,
                 flag_groups = [flag_group(flags = ctx.attr.link_libs)],
-                with_features = [with_feature_set(not_features = ["static_cxx_runtime"])],
+                with_features = [with_feature_set(not_features = ["static_cxx_runtime", "no_cxx_runtime"])],
             ),
             flag_set(
                 actions = all_link_actions + lto_index_actions,
@@ -1415,7 +1446,20 @@ def _impl(ctx):
                 ])],
                 with_features = [with_feature_set(features = ["static_cxx_runtime"])],
             ),
-        ] if ctx.attr.link_libs else [],
+        ] if ctx.attr.link_libs else []) + ([
+            flag_set(
+                actions = all_link_actions + lto_index_actions,
+                flag_groups = [flag_group(flags = link_libs_without_cxx_runtime)],
+                with_features = [with_feature_set(features = ["no_cxx_runtime"], not_features = ["no_libc"])],
+            ),
+        ] if link_libs_without_cxx_runtime else []) + [
+            # -nostdlib also drops the compiler's support library, which freestanding code still needs.
+            flag_set(
+                actions = all_link_actions + lto_index_actions,
+                flag_groups = [flag_group(flags = ["-lgcc"])],
+                with_features = [with_feature_set(features = ["no_libc"])],
+            ),
+        ],
     )
 
     fdo_prefetch_hints_feature = feature(
@@ -2113,6 +2157,8 @@ def _impl(ctx):
     action_configs += parse_headers_action_configs
     features += parse_headers_features
     features += cxx_runtime_features
+    if is_linux:
+        features.append(_no_libc_feature)
 
     if symbol_check:
         features.append(symbol_check)

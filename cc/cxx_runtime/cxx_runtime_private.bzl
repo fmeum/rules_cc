@@ -40,12 +40,14 @@ _PREFIXES = {
     "static": "static-",
 }
 
+_NONE = "none"
+
 # The values of //cc/cxx_runtime:preference.
 CXX_RUNTIME_PREFERENCES = CXX_RUNTIME_FLAVORS + [
     prefix + flavor
     for prefix in _PREFIXES.values()
     for flavor in CXX_RUNTIME_FLAVORS
-]
+] + [_NONE]
 
 _CxxRuntimePreferenceInfo = provider(
     doc = "The ranking of C++ runtime options set via //cc/cxx_runtime:preference.",
@@ -72,6 +74,8 @@ cxx_runtime_preference_flag = rule(
 )
 
 def _parse(preference):
+    if preference == _NONE:
+        return _NONE, _NONE
     for linkage, prefix in _PREFIXES.items():
         if preference.startswith(prefix):
             return linkage, preference.removeprefix(prefix)
@@ -79,6 +83,10 @@ def _parse(preference):
 
 def _has(ctx, constraint_value):
     return ctx.target_platform_has_constraint(constraint_value[platform_common.ConstraintValueInfo])
+
+def _no_libc(ctx):
+    return (ctx.attr._preferred_libc[PreferredLibcInfo].flavor == _NONE or
+            ctx.attr._preferred_crt[PreferredWindowsCrtInfo].flavor == _NONE)
 
 def _links_libc_statically(ctx):
     preferred_libc = ctx.attr._preferred_libc[PreferredLibcInfo]
@@ -89,8 +97,12 @@ def _links_libc_statically(ctx):
         return preferred_crt.requires_static
     return False
 
-def _reject_reason(ctx, linkage, flavor, libc_static):
+def _reject_reason(ctx, linkage, flavor, libc_static, no_libc):
     """Returns why an option isn't viable for the target platform or None if it is."""
+    if linkage == _NONE:
+        return None
+    if no_libc:
+        return "a C++ runtime can't be used without a libc"
     windows = _has(ctx, ctx.attr._windows)
     macos = _has(ctx, ctx.attr._macos)
     if flavor == "msvcp" and not windows:
@@ -122,14 +134,17 @@ def _resolve(ctx):
     derived from it in their `target_settings` are configured for every target platform.
     """
     preferences = ctx.attr._preference[_CxxRuntimePreferenceInfo].preferences
+    no_libc = _no_libc(ctx)
     if not preferences:
+        if no_libc:
+            return PreferredCxxRuntimeInfo(status = "resolved", flavor = _NONE, linkage = _NONE, diagnostic = "")
         return PreferredCxxRuntimeInfo(status = "unset", flavor = None, linkage = None, diagnostic = "")
 
     libc_static = _links_libc_statically(ctx)
     reasons = []
     for preference in preferences:
         linkage, flavor = _parse(preference)
-        reason = _reject_reason(ctx, linkage, flavor, libc_static)
+        reason = _reject_reason(ctx, linkage, flavor, libc_static, no_libc)
         if reason == None:
             return PreferredCxxRuntimeInfo(status = "resolved", flavor = flavor, linkage = linkage, diagnostic = "")
         reasons.append("{}: {}".format(preference, reason))
@@ -138,10 +153,11 @@ def _resolve(ctx):
         status = "unresolved",
         flavor = None,
         linkage = None,
-        diagnostic = "None of the C++ runtime options in --@rules_cc//cc/cxx_runtime:preference={preferences} is viable for the target platform {platform} ({reasons}). Declare the runtime on the platform or rank a \"bundled-\" or \"static-\" option.".format(
+        diagnostic = "None of the C++ runtime options in --@rules_cc//cc/cxx_runtime:preference={preferences} is viable for the target platform {platform} ({reasons}). {remedy}".format(
             preferences = ",".join(preferences),
             platform = ctx.fragments.platform.platform,
             reasons = "; ".join(reasons),
+            remedy = "Rank \"none\" or leave the ranking empty." if no_libc else "Declare the runtime on the platform or rank a \"bundled-\" or \"static-\" option.",
         ),
     )
 

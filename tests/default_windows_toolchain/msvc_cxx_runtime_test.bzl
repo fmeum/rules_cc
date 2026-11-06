@@ -33,6 +33,7 @@ def msvc_cxx_runtime_tests(name, target):
         ("static", {_CRT: ["static-ucrt"], _CXX: ["static-msvcp"]}, _expect_crt_flags(["/MT"], ["/MD"]), False),
         ("static_crt_only", {_CRT: ["static-ucrt"]}, _expect_crt_flags(["/MT"], ["/MD"]), False),
         ("hybrid", {_CRT: ["ucrt"], _CXX: ["static-msvcp"]}, _expect_crt_flags(["/MT"], ["/MD"]), False),
+        ("no_crt", {_CRT: ["none"]}, _expect_crt_flags(["/Zl", "/GS-"], ["/MD", "/MT"]), False),
         ("no_bundled", {_CXX: ["bundled-msvcp"]}, _expect_failure("doesn't define the feature 'bundled_cxx_runtime'"), True),
         ("wrong_crt", {_CRT: ["msvcrt"]}, _expect_failure("targets ucrt, but"), True),
     ]:

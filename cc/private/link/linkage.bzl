@@ -48,12 +48,15 @@ _FLAVOR_FEATURES = {
 # The libc flavors that toolchains report via `target_libc` and that preferences can select.
 _PREFERABLE_LIBCS = ["glibc", "musl", "ucrt", "msvcrt"]
 
+_NONE = "none"
+
 LinkageChoicesInfo = provider(
     doc = "The libc, CRT and C++ runtime preferences resolved against the target platform.",
     fields = {
         "cxx_runtime": "The PreferredCxxRuntimeInfo.",
         "fully_static": "Whether a libc preference requires all executables to be fully static.",
-        "libc_flavor": "The preferred libc or CRT flavor, or None if there is none.",
+        "libc_flavor": "The preferred libc or CRT flavor, \"none\" for no libc, or None if there " +
+                       "is no preference.",
         "requested_features": "The features that represent the preferences. A toolchain has to " +
                               "define the ones in `required_features`.",
         "required_features": "A dict from feature to the flag that makes the toolchain require it.",
@@ -88,12 +91,21 @@ def create_linkage_choices(*, windows, preferred_libc, preferred_crt, cxx_runtim
     required = {}
     requested = []
     unsupported = []
+    libc_flag = _CRT_FLAG if windows else _LIBC_FLAG
+    no_libc = libc_flavor == _NONE
 
     if fully_static:
         required[feature_names.FULLY_STATIC_LINK] = _LIBC_FLAG
 
+    if no_libc:
+        required[feature_names.NO_LIBC] = libc_flag
+
     if cxx_runtime.status == "resolved":
-        if cxx_runtime.linkage == "static":
+        if cxx_runtime.linkage == _NONE:
+            required[feature_names.NO_CXX_RUNTIME] = libc_flag if no_libc else _CXX_RUNTIME_FLAG
+            unsupported.append(feature_names.STATIC_CXX_RUNTIME)
+            unsupported.append(feature_names.DYNAMIC_CXX_RUNTIME)
+        elif cxx_runtime.linkage == "static":
             required[feature_names.STATIC_CXX_RUNTIME] = _CXX_RUNTIME_FLAG
             unsupported.append(feature_names.DYNAMIC_CXX_RUNTIME)
         else:
@@ -101,11 +113,15 @@ def create_linkage_choices(*, windows, preferred_libc, preferred_crt, cxx_runtim
             required[feature_names.SYSTEM_CXX_RUNTIME if cxx_runtime.linkage == "system" else feature_names.BUNDLED_CXX_RUNTIME] = _CXX_RUNTIME_FLAG
             unsupported.append(feature_names.STATIC_CXX_RUNTIME)
             unsupported.append(feature_names.STATIC_LIBGCC)
-        required[_FLAVOR_FEATURES[cxx_runtime.flavor]] = _CXX_RUNTIME_FLAG
+        if cxx_runtime.linkage != _NONE:
+            required[_FLAVOR_FEATURES[cxx_runtime.flavor]] = _CXX_RUNTIME_FLAG
 
     if windows:
         static_msvcp = cxx_runtime.status == "resolved" and cxx_runtime.flavor == "msvcp" and cxx_runtime.linkage == "static"
-        if static_crt or static_msvcp:
+        if no_libc:
+            unsupported.append(feature_names.STATIC_LINK_MSVCRT)
+            unsupported.append(feature_names.DYNAMIC_LINK_MSVCRT)
+        elif static_crt or static_msvcp:
             # /MT selects the static C++ runtime and, unless the UCRT is replaced at link time, the
             # static UCRT.
             required[feature_names.STATIC_LINK_MSVCRT] = _CRT_FLAG if static_crt else _CXX_RUNTIME_FLAG
@@ -200,6 +216,27 @@ def reconcile_linkage_features(*, choices, default_features, requested_features,
         if feature in unsupported and feature in requested_features:
             fail(("The feature '{}' conflicts with {}. The CRT affects compilation and thus has to " +
                   "be the same for the entire build.").format(feature, _CRT_FLAG))
+
+    if feature_names.NO_LIBC in requested_features and choices.libc_flavor not in (None, _NONE):
+        fail(("The feature '{}' conflicts with {}, which chose {}. The libc affects compilation and " +
+              "thus has to be the same for a target and its dependencies, so use a transition to " +
+              "change the preference.").format(
+            feature_names.NO_LIBC,
+            _CRT_FLAG if choices.windows else _LIBC_FLAG,
+            choices.libc_flavor,
+        ))
+
+    if (feature_names.NO_CXX_RUNTIME in requested_features and
+        choices.cxx_runtime.status == "resolved" and
+        choices.cxx_runtime.linkage != _NONE):
+        fail(("The feature '{}' conflicts with {}. The C++ runtime headers affect compilation and " +
+              "thus have to be the same for a target and its dependencies, so use a transition to " +
+              "change the preference.").format(feature_names.NO_CXX_RUNTIME, _CXX_RUNTIME_FLAG))
+
+    if choices.cxx_runtime.linkage == _NONE:
+        for feature in (feature_names.STATIC_CXX_RUNTIME, feature_names.DYNAMIC_CXX_RUNTIME):
+            if feature in requested_features:
+                fail("The feature '{}' conflicts with the choice of no C++ runtime.".format(feature))
 
     wants_static_cxx_runtime = choices.cxx_runtime.linkage == "static"
     if wants_static_cxx_runtime and feature_names.DYNAMIC_CXX_RUNTIME in requested_features:
@@ -304,7 +341,8 @@ def check_can_link_shared_library(*, cc_toolchain, name):
       cc_toolchain: The CcToolchainInfo.
       name: The name of the shared library.
     """
-    if cc_toolchain._linkage_choices.fully_static:
+    # A shared library without a libc can still be loaded by a host with its own loader.
+    if cc_toolchain._linkage_choices.fully_static and cc_toolchain._linkage_choices.libc_flavor != _NONE:
         fail(("The shared library '{}' can't be linked since {} requires fully static binaries, " +
               "which can't load shared libraries. Rank an option without the \"static-\" prefix " +
               "or add @platforms_contrib//os/linux/libc:requires_fully_static to the " +

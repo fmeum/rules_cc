@@ -29,6 +29,12 @@ cc_feature(
 )
 
 cc_feature(
+    name = "no_cxx_runtime",
+    feature_name = "no_cxx_runtime",
+    mutually_exclusive = [":cxx_runtime_linkage"],
+)
+
+cc_feature(
     name = "system_cxx_runtime",
     feature_name = "system_cxx_runtime",
     mutually_exclusive = [":cxx_runtime_provenance"],

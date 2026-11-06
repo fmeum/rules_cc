@@ -25,19 +25,21 @@ Usage:
       - `bundled-<flavor>`: link against a shared copy that's shipped in the runfiles, which is viable
         if the libc is linked dynamically.
       - `static-<flavor>`: link the C++ runtime into every binary.
+      - `none`: don't use a C++ runtime, neither its headers nor its libraries.
 
     The flavors are `libc++`, `libstdc++` (not on macOS) and `msvcp` (Windows only). The preferred
     option is the first viable one. The default is the empty ranking, which leaves the choice to the
-    C++ toolchain and links the C++ runtime the same way as the libraries of the binary.
+    C++ toolchain and links the C++ runtime the same way as the libraries of the binary. If the libc
+    preference is `none`, then `none` is the only viable option and the default.
 
   * Following the choice in a C++ toolchain: define the features `static_cxx_runtime`,
-    `dynamic_cxx_runtime`, `system_cxx_runtime`, `bundled_cxx_runtime`, `libcxx_runtime`,
-    `libstdcxx_runtime` and `msvcp_runtime` for the options the toolchain can deliver. rules_cc
-    requests the matching ones and fails if the toolchain doesn't define them. It links
-    `static_runtime_lib` for a static C++ runtime and `dynamic_runtime_lib` otherwise and adds the
-    latter to the runfiles. For a C++ runtime from the platform, `dynamic_runtime_lib` should thus
-    not contain the C++ runtime. Link against it via flags instead. Use `:*_preferred` as `select()`
-    keys to choose runtime libraries and flags.
+    `dynamic_cxx_runtime`, `system_cxx_runtime`, `bundled_cxx_runtime`, `no_cxx_runtime`,
+    `libcxx_runtime`, `libstdcxx_runtime` and `msvcp_runtime` for the options the toolchain can
+    deliver. rules_cc requests the matching ones and fails if the toolchain doesn't define them. It
+    links `static_runtime_lib` for a static C++ runtime and `dynamic_runtime_lib` otherwise and adds
+    the latter to the runfiles. For a C++ runtime from the platform, `dynamic_runtime_lib` should
+    thus not contain the C++ runtime. Link against it via flags instead. For `none`, neither list
+    should contain it. Use `:*_preferred` as `select()` keys to choose runtime libraries and flags.
 
   * Following the choice in a rule that doesn't use a C++ toolchain: use `:*_preferred`, read the
     `PreferredCxxRuntimeInfo` provider (from `cxx_runtime.bzl`) of `:preferred` or add `:preferred` to
@@ -100,6 +102,11 @@ preferred_cxx_runtime(
     )
     for linkage in CXX_RUNTIME_LINKAGES
 ]
+
+config_setting(
+    name = "none_preferred",
+    flag_values = {":preferred": "none"},
+)
 
 config_setting(
     name = "unset",

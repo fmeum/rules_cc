@@ -21,6 +21,15 @@ def _expect_flags(flags, no_flags):
 
     return impl
 
+def _expect_compile_flags(flags):
+    def impl(env, target):
+        compile_action = [action for action in target.actions if action.mnemonic == "CppCompile"][0]
+        argv = env.expect.that_collection(compile_action.argv)
+        for flag in flags:
+            argv.contains(flag)
+
+    return impl
+
 def _expect_failure(message):
     def impl(env, target):
         env.expect.that_target(target).failures().contains_predicate(matching.contains(message))
@@ -37,6 +46,11 @@ def unix_cxx_runtime_tests(name, target):
         ("wrong_flavor", {_CXX: ["static-libc++"]}, _expect_failure("doesn't define the feature 'libcxx_runtime'"), True),
         ("no_bundled", {_CXX: ["bundled-libstdc++"]}, _expect_failure("doesn't define the feature 'bundled_cxx_runtime'"), True),
         ("wrong_libc", {_LIBC: ["static-musl"]}, _expect_failure("targets glibc, but"), True),
+        ("no_cxx_runtime", {_CXX: ["none"]}, _expect_flags([], ["-lstdc++", "-l:libstdc++.a", "-nostdlib"]), False),
+        ("no_cxx_runtime_compile", {_CXX: ["none"]}, _expect_compile_flags(["-nostdinc++"]), False),
+        ("no_libc", {_LIBC: ["none"]}, _expect_flags(["-nostdlib", "-static", "-lgcc"], ["-lstdc++", "-l:libstdc++.a", "-static-libgcc"]), False),
+        ("no_libc_compile", {_LIBC: ["none"]}, _expect_compile_flags(["-ffreestanding", "-fno-stack-protector", "-nostdinc++"]), False),
+        ("no_libc_rejects_cxx_runtime", {_LIBC: ["none"], _CXX: ["static-libstdc++"]}, _expect_failure("can't be used without a libc"), True),
     ]:
         test_name = "{}_{}".format(name, test)
         analysis_test(

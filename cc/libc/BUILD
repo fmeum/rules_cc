@@ -162,6 +162,9 @@ config_setting(
 
 ### Generic
 
+# No C standard library, e.g. for freestanding code. This includes platforms
+# without an OS as well as Linux and Windows code built with the libc preference
+# "none" (see @platforms_contrib//os/linux/libc:preference).
 config_setting(
     name = "none",
     flag_values = {":libc": "none"},

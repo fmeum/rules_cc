@@ -22,13 +22,16 @@ Provided by //cc/cxx_runtime:preferred.""",
         "diagnostic": "Why no option is viable if `status` is \"unresolved\", otherwise empty. " +
                       "The wording isn't stable.",
         "flavor": "The preferred C++ standard library, currently \"libc++\", \"libstdc++\" or " +
-                  "\"msvcp\", if `status` is \"resolved\", otherwise None.",
+                  "\"msvcp\", or \"none\" if there is none, if `status` is \"resolved\", " +
+                  "otherwise None.",
         "linkage": "How the C++ runtime is linked and deployed if `status` is \"resolved\", " +
                    "otherwise None: \"static\" links it into the binary, \"system\" links against " +
-                   "the copy on the target platform and \"bundled\" links against a shared copy " +
-                   "that's shipped in the runfiles of the binary.",
-        "status": "\"resolved\" if an option is viable, \"unresolved\" if none is and \"unset\" " +
-                  "for an empty ranking, which leaves the choice to the C++ toolchain.",
+                   "the copy on the target platform, \"bundled\" links against a shared copy " +
+                   "that's shipped in the runfiles of the binary and \"none\" doesn't use a C++ " +
+                   "runtime at all.",
+        "status": "\"resolved\" if an option is viable or there is no libc, which rules out a " +
+                  "C++ runtime, \"unresolved\" if none is and \"unset\" for an empty ranking, " +
+                  "which leaves the choice to the C++ toolchain.",
     },
 )
 

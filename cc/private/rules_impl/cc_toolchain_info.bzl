@@ -107,7 +107,8 @@ def _create_cc_toolchain_info(
         dynamic_runtime_lib = _dynamic_runtime_lib(dynamic_runtime_lib_depset),
         sysroot = sysroot,
         compiler = toolchain_config_info.compiler,
-        libc = toolchain_config_info.target_libc,
+        # The choice of no libc overrules the libc that the toolchain otherwise targets.
+        libc = "none" if linkage_choices.libc_flavor == "none" else toolchain_config_info.target_libc,
         cpu = toolchain_config_info.target_cpu,
         target_gnu_system_name = toolchain_config_info.target_system_name,
         toolchain_id = toolchain_config_info.toolchain_id,

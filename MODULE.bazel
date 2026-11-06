@@ -50,7 +50,7 @@ bazel_dep(name = "stardoc", version = "0.8.0", dev_dependency = True)
 # Prototype: Pending bazel-contrib/platforms_contrib#28 and its follow-ups.
 git_override(
     module_name = "platforms_contrib",
-    commit = "e6d2a9faf6e93336a2b5307e93906b1d69c2ce2f",
+    commit = "2e37a56febc823c7edb98196d4f02f2af0028714",
     remote = "https://github.com/fmeum/platforms_contrib.git",
 )
 
