@@ -64,6 +64,9 @@ cc_feature_set(
 
 filegroup(
     name = "srcs",
-    srcs = glob(["**"]) + ["//cc/toolchains/features/legacy:srcs"],
+    srcs = glob(["**"]) + [
+        "//cc/toolchains/features/cxx_runtime:srcs",
+        "//cc/toolchains/features/legacy:srcs",
+    ],
     visibility = ["//visibility:public"],
 )

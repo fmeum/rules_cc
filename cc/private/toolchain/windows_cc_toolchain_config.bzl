@@ -1394,7 +1394,30 @@ def _impl(ctx):
                 ],
             )
 
+        # /MT links the static UCRT, which the hybrid CRT replaces with the UCRT DLL of the OS.
+        hybrid_crt_feature = feature(
+            name = "hybrid_crt",
+            flag_sets = [
+                flag_set(
+                    actions = all_link_actions,
+                    flag_groups = [flag_group(flags = ["/NODEFAULTLIB:libucrt.lib", "/DEFAULTLIB:ucrt.lib"])],
+                    with_features = [with_feature_set(not_features = ["dbg"])],
+                ),
+                flag_set(
+                    actions = all_link_actions,
+                    flag_groups = [flag_group(flags = ["/NODEFAULTLIB:libucrtd.lib", "/DEFAULTLIB:ucrtd.lib"])],
+                    with_features = [with_feature_set(features = ["dbg"])],
+                ),
+            ],
+        )
+
         features = [
+            # /MT and /MD also select the C++ runtime, so these don't add any flags.
+            feature(name = "msvcp_runtime"),
+            feature(name = "static_cxx_runtime"),
+            feature(name = "dynamic_cxx_runtime"),
+            feature(name = "system_cxx_runtime"),
+            hybrid_crt_feature,
             no_legacy_features_feature,
             nologo_feature,
             has_configured_linker_path_feature,

@@ -1,8 +1,11 @@
+load("@platforms_contrib//os/linux/cxx_runtime/libstdcxx:libstdcxx.bzl", "libstdcxx_version_constraints")
+load("@platforms_contrib//os/linux/libc/glibc:glibc.bzl", "glibc_version_constraints")
 load("//cc:cc_binary.bzl", "cc_binary")
 load("//cc:cc_library.bzl", "cc_library")
 load("//cc/private/toolchain:unix_cc_toolchain_config.bzl", "cc_toolchain_config")  # buildifier: disable=bzl-visibility
 load("//cc/toolchains:cc_toolchain.bzl", "cc_toolchain")
 load(":unix_archiver_test.bzl", "unix_archiver_tests")
+load(":unix_cxx_runtime_test.bzl", "unix_cxx_runtime_tests")
 load(":unix_fission_test.bzl", "unix_fission_tests")
 
 platform(
@@ -126,4 +129,70 @@ cc_binary(
 unix_fission_tests(
     name = "unix_fission_tests",
     target = ":fission",
+)
+
+platform(
+    name = "linux_with_libstdcxx",
+    constraint_values = [
+        "@platforms//os:linux",
+    ] + glibc_version_constraints("2.35") + libstdcxx_version_constraints("13"),
+)
+
+cc_toolchain_config(
+    name = "linux_cxx_runtime_config",
+    abi_libc_version = "local",
+    abi_version = "local",
+    compiler = "compiler",
+    cpu = "k8",
+    host_system_name = "local",
+    link_libs = [
+        "-Wl,--push-state,-as-needed",
+        "-lstdc++",
+        "-Wl,--pop-state",
+    ],
+    target_libc = "glibc-2.35",
+    target_system_name = "local",
+    tool_paths = {
+        "ar": "/usr/bin/ar",
+        "cpp": "/usr/bin/cpp",
+        "gcc": "/usr/bin/cc",
+        "ld": "/usr/bin/ld",
+        "nm": "/usr/bin/nm",
+        "objcopy": "/usr/bin/objcopy",
+        "objdump": "/usr/bin/objdump",
+        "strip": "/usr/bin/strip",
+    },
+    toolchain_identifier = "default-unix-toolchain-test",
+)
+
+cc_toolchain(
+    name = "linux_cxx_runtime_cc_toolchain",
+    all_files = ":empty",
+    ar_files = ":empty",
+    as_files = ":empty",
+    compiler_files = ":empty",
+    dwp_files = ":empty",
+    linker_files = ":empty",
+    objcopy_files = ":empty",
+    strip_files = ":empty",
+    toolchain_config = ":linux_cxx_runtime_config",
+    toolchain_identifier = "default-unix-toolchain-test",
+)
+
+toolchain(
+    name = "linux_cxx_runtime_cc_toolchain_registration",
+    target_compatible_with = ["@platforms//os:linux"],
+    toolchain = ":linux_cxx_runtime_cc_toolchain",
+    toolchain_type = "//cc:toolchain_type",
+)
+
+cc_binary(
+    name = "cxx_runtime_binary",
+    srcs = ["archive.cc"],
+    tags = ["manual"],
+)
+
+unix_cxx_runtime_tests(
+    name = "unix_cxx_runtime_tests",
+    target = ":cxx_runtime_binary",
 )
