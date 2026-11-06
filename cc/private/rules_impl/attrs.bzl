@@ -277,6 +277,13 @@ There are really three different ways to link an executable:
   This mode is enabled by specifying <code>linkstatic=False</code>.</li>
 </ul>
 <p>
+The C++ runtime is linked the same way as the libraries unless
+<code>@rules_cc//cc/cxx_runtime:preference</code> chooses otherwise. If that requires a static C++
+runtime or <code>@platforms_contrib//os/linux/libc:preference</code> requires a static libc, or if
+<code>fully_static_link</code> is enabled, this attribute is ignored and libraries are linked
+statically.
+</p>
+<p>
 If the <code>linkstatic</code> attribute or <code>fully_static_link</code> in
 <code>features</code> is used outside of <code>//third_party</code>
 please include a comment near the rule to explain why.

@@ -20,6 +20,7 @@ load("//cc/common:cc_common.bzl", "cc_common")
 load("//cc/common:cc_helper.bzl", "cc_helper")
 load("//cc/common:cc_helper_internal.bzl", "get_relative_path")
 load("//cc/common:cc_info.bzl", "CcInfo")
+load("//cc/private/link:linkage.bzl", "linkage_error")
 load("//cc/private/rules_impl/fdo:fdo_context.bzl", "create_fdo_context")
 load(":cc_toolchain_info.bzl", "CcToolchainInfo")
 
@@ -247,6 +248,14 @@ def get_cc_toolchain_provider(ctx, attributes):
         toolchain_config_info = toolchain_config_info,
         toolchain_features = toolchain_features,
         crosstool_top_path = tools_directory,
+        linkage_choices = attributes.linkage_choices,
+        linkage_error = linkage_error(
+            choices = attributes.linkage_choices,
+            toolchain_features = toolchain_features,
+            toolchain_label = attributes.cc_toolchain_label,
+            target_libc = toolchain_config_info.target_libc,
+            cpp_configuration = ctx.fragments.cpp,
+        ),
         static_runtime_lib_depset = static_runtime_link_inputs,
         dynamic_runtime_lib_depset = dynamic_runtime_link_symlinks,
         dynamic_runtime_solib_dir = runtime_solib_dir,

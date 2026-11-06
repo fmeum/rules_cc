@@ -15,6 +15,7 @@
 """Helper function for parsing target_libc values."""
 
 visibility([
+    "//cc/private/link",
     "//cc/toolchains",
     "//tests/libc_settings",
 ])

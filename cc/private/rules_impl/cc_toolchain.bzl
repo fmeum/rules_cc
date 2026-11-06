@@ -17,6 +17,7 @@
 load("//cc/common:cc_common.bzl", "cc_common")
 load("//cc/common:cc_helper.bzl", "cc_helper")
 load("//cc/common:semantics.bzl", "semantics")
+load("//cc/private/link:linkage.bzl", "LinkageChoicesInfo")
 load("//cc/private/rules_impl/fdo:fdo_context.bzl", "create_fdo_context")
 load("//cc/toolchains:cc_toolchain_config_info.bzl", "CcToolchainConfigInfo")
 load("//cc/toolchains:cc_toolchain_info.bzl", "ActionTypeSetInfo", "FeatureSetInfo", "ToolConfigInfo")
@@ -139,6 +140,7 @@ def _attributes(ctx):
         cc_toolchain_config_info = cc_toolchain_config_info,
         static_runtime_lib = ctx.attr.static_runtime_lib,
         dynamic_runtime_lib = ctx.attr.dynamic_runtime_lib,
+        linkage_choices = ctx.attr._linkage_choices[LinkageChoicesInfo],
         supports_header_parsing = ctx.attr.supports_header_parsing,
         all_files = all_files,
         link_dynamic_library_tool = ctx.file._link_dynamic_library_tool,
@@ -366,6 +368,10 @@ The label of the rule providing <code>cc_toolchain_config_info</code>.""",
             cfg = "exec",
         ),
         "_cc_toolchain_type": attr.label(default = "@bazel_tools//tools/cpp:toolchain_type"),
+        "_linkage_choices": attr.label(
+            default = "//cc/private/link:linkage_choices",
+            providers = [LinkageChoicesInfo],
+        ),
         "_zipper": attr.label(
             default = configuration_field(fragment = "cpp", name = "zipper"),
             allow_single_file = True,

@@ -20,6 +20,7 @@ load("//cc/common:semantics.bzl", cc_semantics = "semantics")
 # Loaded from //cc/private instead of //cc/common to avoid a load cycle through the compatibility
 # proxy, which loads //cc/private:cc_common.bzl, which loads this file.
 load("//cc/private:cc_info.bzl", "CcInfo")
+load("//cc/private/link:linkage.bzl", "check_linkage_features", "reconcile_linkage_features")
 
 ALL_COMPILE_ACTIONS = [
     ACTION_NAMES.c_compile,
@@ -156,8 +157,18 @@ def configure_features(
             unsupported_features = unsupported_features,
         )
 
+    if cc_toolchain._linkage_error and ctx.label != cc_toolchain._toolchain_label:
+        fail(cc_toolchain._linkage_error)
+
+    linkage_requested_features, linkage_unsupported_features = reconcile_linkage_features(
+        choices = cc_toolchain._linkage_choices,
+        default_features = cc_toolchain._default_features_and_action_configs,
+        requested_features = requested_features,
+        unsupported_features = unsupported_features,
+    )
+
     all_requested_features_set = set()
-    all_unsupported_features_set = set(unsupported_features)
+    all_unsupported_features_set = set(unsupported_features) | linkage_unsupported_features
 
     if not cc_toolchain._supports_header_parsing:
         # TODO(b/159096411): Remove once supports_header_parsing has been removed from the
@@ -190,6 +201,7 @@ def configure_features(
     all_features = [cpp_configuration.compilation_mode()]
     all_features.extend(DEFAULT_ACTION_CONFIGS)
     all_features.extend(requested_features)
+    all_features.extend(linkage_requested_features)
     all_features.extend(cc_toolchain._default_features_and_action_configs)
 
     if language == "objc" or language == "objcpp":
@@ -270,6 +282,8 @@ def configure_features(
             fail(("The C++ toolchain '{}' unconditionally implies feature '{}', which is unsupported " +
                   "by this rule. This is most likely a misconfiguration in the C++ toolchain.")
                 .format(cc_toolchain._toolchain_label, feature))
+
+    check_linkage_features(cc_toolchain = cc_toolchain, feature_configuration = feature_configuration)
 
     if (cpp_configuration.force_pic() and
         not feature_configuration.is_enabled(feature_names.PIC) and

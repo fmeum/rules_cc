@@ -24,6 +24,8 @@ load("//cc/common:debug_package_info.bzl", "DebugPackageInfo")
 load("//cc/common:feature_names.bzl", "feature_names")
 load("//cc/common:semantics.bzl", "semantics")
 load("//cc/private:graph_node_info.bzl", "GraphNodeInfo")
+load("//cc/private/link:linkage.bzl", "links_cxx_runtime_statically", "requires_static_linking_mode")
+load("//cc/private/link:target_types.bzl", "LINKING_MODE")
 load(":cc_shared_library_impl.bzl", "add_unused_dynamic_deps", "build_exports_map_from_only_dynamic_deps", "build_link_once_static_libs_map", "merge_cc_shared_library_infos", "separate_static_and_dynamic_link_libraries", "sort_linker_inputs", "throw_linked_but_not_exported_errors")
 load(":function_providing_rule.bzl", "wrap_starlark_function")
 
@@ -157,7 +159,10 @@ def _collect_runfiles(ctx, feature_configuration, cc_toolchain, linking_context,
         builder = builder.merge(dynamic_dep[DefaultInfo].default_runfiles)
 
     builder = builder.merge_all(runfiles_is_static + runfiles_is_not_static)
-    if linking_mode == linker_mode.LINKING_DYNAMIC:
+    if not links_cxx_runtime_statically(
+        feature_configuration,
+        LINKING_MODE.DYNAMIC if linking_mode == linker_mode.LINKING_DYNAMIC else LINKING_MODE.STATIC,
+    ):
         dynamic_runtime_lib = cc_toolchain.dynamic_runtime_lib(feature_configuration = feature_configuration)
         dynamic_runtime_lib_list = dynamic_runtime_lib.to_list()
         builder_transitive_artifacts.extend(dynamic_runtime_lib_list)
@@ -401,8 +406,10 @@ def _collect_linking_context(ctx):
     cc_infos = _get_providers(ctx)
     return cc_common.merge_cc_infos(direct_cc_infos = cc_infos, cc_infos = cc_infos).linking_context
 
-def _get_link_staticness(ctx, cpp_config, force_linkstatic, _is_dbg_build):
-    if cpp_config.dynamic_mode() == "FULLY":
+def _get_link_staticness(ctx, cpp_config, feature_configuration, force_linkstatic, _is_dbg_build):
+    if requires_static_linking_mode(feature_configuration):
+        return linker_mode.LINKING_STATIC
+    elif cpp_config.dynamic_mode() == "FULLY":
         return linker_mode.LINKING_DYNAMIC
     elif cpp_config.dynamic_mode() == "OFF" or ctx.attr.linkstatic or force_linkstatic:
         return linker_mode.LINKING_STATIC
@@ -470,9 +477,17 @@ def cc_binary_impl(ctx, additional_linkopts, force_linkstatic = False):
             cc_toolchain = cc_toolchain,
             linked_artifact_category = linked_artifact_category,
         )
+
+    # The link mode depends on the requested features and is itself added to them below.
     linking_mode = _get_link_staticness(
         ctx,
         cpp_config,
+        cc_common.configure_features(
+            ctx = ctx,
+            cc_toolchain = cc_toolchain,
+            requested_features = ctx.features,
+            unsupported_features = ctx.disabled_features,
+        ),
         force_linkstatic,
         is_dbg_build,
     )

@@ -23,6 +23,8 @@ load("//cc/common:cc_shared_library_info.bzl", "CcSharedLibraryInfo")
 load("//cc/common:feature_names.bzl", "feature_names")
 load("//cc/common:semantics.bzl", "semantics")
 load("//cc/private:graph_node_info.bzl", "GraphNodeInfo")
+load("//cc/private/link:linkage.bzl", "links_cxx_runtime_statically")
+load("//cc/private/link:target_types.bzl", "LINKING_MODE")
 load(":function_providing_rule.bzl", "wrap_starlark_function")
 
 # TODO(#5200): Add export_define to library_to_link and cc_library
@@ -731,6 +733,8 @@ def _cc_shared_library_impl(ctx):
     )
 
     runfiles_files = []
+    if not links_cxx_runtime_statically(feature_configuration, LINKING_MODE.STATIC):
+        runfiles_files.extend(cc_toolchain.dynamic_runtime_lib(feature_configuration = feature_configuration).to_list())
     if linking_outputs.library_to_link.resolved_symlink_dynamic_library != None:
         runfiles_files.append(linking_outputs.library_to_link.resolved_symlink_dynamic_library)
 

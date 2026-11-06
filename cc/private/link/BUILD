@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load(":linkage_choices.bzl", "linkage_choices")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -55,12 +56,35 @@ filegroup(
 )
 
 bzl_library(
+    name = "linkage",
+    srcs = ["linkage.bzl"],
+    deps = [
+        ":target_types",
+        "//cc/common:feature_names",
+    ],
+)
+
+bzl_library(
+    name = "linkage_choices_bzl",
+    srcs = ["linkage_choices.bzl"],
+    deps = [
+        ":linkage",
+        "//cc/cxx_runtime:cxx_runtime_bzl",
+        "@platforms_contrib//os/linux/libc:libc_bzl",
+        "@platforms_contrib//os/windows/crt:crt_bzl",
+    ],
+)
+
+linkage_choices(name = "linkage_choices")
+
+bzl_library(
     name = "cc_linking_helper",
     srcs = ["cc_linking_helper.bzl"],
     deps = [
         ":cpp_link_action",
         ":create_library_to_link",
         ":dynamic_library_symlink",
+        ":linkage",
         ":lto_indexing_action",
         ":target_types",
         "//cc/common:cc_helper_internal",

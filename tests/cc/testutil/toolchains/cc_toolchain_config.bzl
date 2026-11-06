@@ -857,6 +857,33 @@ _static_link_cpp_runtimes_feature = feature(
     enabled = True,
 )
 
+def _mock_linkage_feature(name):
+    return feature(
+        name = name,
+        flag_sets = [
+            flag_set(
+                actions = [ACTION_NAMES.cpp_compile, ACTION_NAMES.cpp_link_executable],
+                flag_groups = [flag_group(flags = ["<" + name + ">"])],
+            ),
+        ],
+    )
+
+_linkage_features = {
+    name: _mock_linkage_feature(name)
+    for name in [
+        FEATURE_NAMES.bundled_cxx_runtime,
+        FEATURE_NAMES.dynamic_cxx_runtime,
+        FEATURE_NAMES.dynamic_link_msvcrt,
+        FEATURE_NAMES.hybrid_crt,
+        FEATURE_NAMES.libcxx_runtime,
+        FEATURE_NAMES.libstdcxx_runtime,
+        FEATURE_NAMES.msvcp_runtime,
+        FEATURE_NAMES.static_cxx_runtime,
+        FEATURE_NAMES.static_link_msvcrt,
+        FEATURE_NAMES.system_cxx_runtime,
+    ]
+}
+
 _simple_compile_feature = feature(
     name = FEATURE_NAMES.simple_compile_feature,
     flag_sets = [
@@ -1743,7 +1770,7 @@ _fdo_prefetch_hints_feature = feature(
         ),
     ],
 )
-_feature_name_to_feature = {
+_feature_name_to_feature = _linkage_features | {
     FEATURE_NAMES.force_pic_flags: _force_pic_flags_feature,
     FEATURE_NAMES.libraries_to_link: _libraries_to_link_feature,
     FEATURE_NAMES.fdo_prefetch_hints: _fdo_prefetch_hints_feature,
@@ -1803,6 +1830,15 @@ _feature_name_to_feature = {
     FEATURE_NAMES.module_maps: _module_maps_feature,
     FEATURE_NAMES.use_header_modules: _use_header_modules_feature,
     FEATURE_NAMES.static_link_cpp_runtimes: _static_link_cpp_runtimes_feature,
+    FEATURE_NAMES.fully_static_link: feature(
+        name = FEATURE_NAMES.fully_static_link,
+        flag_sets = [
+            flag_set(
+                actions = [ACTION_NAMES.cpp_link_executable],
+                flag_groups = [flag_group(flags = ["<fully_static_link>"])],
+            ),
+        ],
+    ),
     FEATURE_NAMES.simple_compile_feature: _simple_compile_feature,
     FEATURE_NAMES.simple_link_feature: _simple_link_feature,
     FEATURE_NAMES.link_env: _link_env_feature,

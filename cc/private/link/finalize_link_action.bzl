@@ -21,6 +21,7 @@ load("//cc/private/compile:linkstamp_compile.bzl", "register_linkstamp_compile_a
 load("//cc/private/link:collect_solib_dirs.bzl", "collect_solib_dirs")
 load("//cc/private/link:create_libraries_to_link_values.bzl", "add_libraries_to_link", "add_object_files_to_link", "process_objects_for_lto")
 load("//cc/private/link:link_build_variables.bzl", "setup_common_linking_variables")
+load("//cc/private/link:linkage.bzl", "check_fully_static_inputs")
 load("//cc/private/link:target_types.bzl", "LINKING_MODE", "LINK_TARGET_TYPE", "USE_ARCHIVER", "USE_LINKER", "is_dynamic_library")
 load("//cc/private/rules_impl:native_cc_common.bzl", _cc_common_internal = "native_cc_common")
 
@@ -142,6 +143,14 @@ def finalize_link_action(
     # TODO(b/338618120): deduplicate prefer_static_lib, prefer_pic_libs
     prefer_static_libs = linking_mode == LINKING_MODE.STATIC or \
                          not feature_configuration.is_enabled(feature_names.SUPPORTS_DYNAMIC_LINKER)
+
+    if not is_dynamic_library(link_type):
+        check_fully_static_inputs(
+            feature_configuration = feature_configuration,
+            output = output,
+            libraries_to_link = libraries_to_link,
+            prefer_static_libs = prefer_static_libs,
+        )
 
     # TODO(b/412540147): We select PIC libraries iff creating a dynamic library. Match PIC flags.
     prefer_pic_libs = is_dynamic_library(link_type)

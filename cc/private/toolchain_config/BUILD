@@ -59,6 +59,7 @@ bzl_library(
         "//cc/common:feature_names",
         "//cc/common:semantics",
         "//cc/private:cc_info",
+        "//cc/private/link:linkage",
     ],
 )
 

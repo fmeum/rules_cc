@@ -314,6 +314,18 @@ filegroup(
     srcs = [":everything-multilib"],
 )
 
+filegroup(name = "empty_runtime_lib")
+
+filegroup(
+    name = "mock_static_runtime_lib",
+    srcs = ["mock_cxx_runtime/libmock_cxx_runtime.a"],
+)
+
+filegroup(
+    name = "mock_dynamic_runtime_lib",
+    srcs = ["mock_cxx_runtime/libmock_cxx_runtime.so"],
+)
+
 toolchain(
     name = "cc-toolchain-k8-compiler",
     toolchain = ":cc-compiler-k8-compiler",
@@ -336,7 +348,10 @@ cc_toolchain_config(
     feature_names = [],
     host_system_name = "local",
     make_variables = {},
-    target_libc = "glibc",
+    target_libc = select({
+        "@platforms//os:windows": "ucrt",
+        "//conditions:default": "glibc",
+    }),
     target_system_name = "local",
     tool_paths = {},
     toolchain_identifier = "mock-toolchain-k8",
@@ -398,11 +413,16 @@ cc_toolchain(
     compiler_files_without_includes = "compile-without-includes-k8",
     coverage_files = "coverage-file",
     dwp_files = "dwp-k8",
+    dynamic_runtime_lib = select({
+        "//cc/cxx_runtime:system_preferred": ":empty_runtime_lib",
+        "//conditions:default": ":mock_dynamic_runtime_lib",
+    }),
     licenses = ["unencumbered"],
     linker_files = "link-k8",
     module_map = "crosstool.cppmap",
     objcopy_files = "objcopy-k8",
     output_licenses = ["unencumbered"],
+    static_runtime_lib = ":mock_static_runtime_lib",
     strip_files = ":every-file",
     supports_header_parsing = 1,
     toolchain_config = ":k8-compiler_config",

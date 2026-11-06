@@ -21,6 +21,7 @@ load("//cc/common:feature_names.bzl", "feature_names")
 load("//cc/private:cc_internal.bzl", _cc_internal = "cc_internal")
 load("//cc/private/compile:cc_compilation_outputs.bzl", "EMPTY_COMPILATION_OUTPUTS")
 load("//cc/private/link:cc_linking_helper.bzl", "create_cc_link_actions")
+load("//cc/private/link:linkage.bzl", "check_can_link_shared_library", "requires_static_linking_mode")
 load("//cc/private/link:target_types.bzl", "LINKING_MODE", "LINK_TARGET_TYPE")
 
 # Translation table from language and output type to static and dynamic target type.
@@ -158,7 +159,10 @@ def link(
     if static_link_type == LINK_TARGET_TYPE.STATIC_LIBRARY and always_link:
         static_link_type = LINK_TARGET_TYPE.ALWAYS_LINK_STATIC_LIBRARY
 
-    linking_mode = LINKING_MODE.STATIC if link_deps_statically else LINKING_MODE.DYNAMIC
+    if output_type == "dynamic_library":
+        check_can_link_shared_library(cc_toolchain = cc_toolchain, name = name)
+
+    linking_mode = LINKING_MODE.STATIC if link_deps_statically or requires_static_linking_mode(feature_configuration) else LINKING_MODE.DYNAMIC
 
     # TODO(b/338618120): Migrate Apple and Android rules, so they don't need to use build_config
     # when calling link. This happens because they are using deps with split configuration

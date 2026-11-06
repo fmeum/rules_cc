@@ -34,6 +34,7 @@ load(
     "dynamic_library_soname",
     "dynamic_library_symlink",
 )
+load("//cc/private/link:linkage.bzl", "links_cxx_runtime_statically")
 load("//cc/private/link:lto_indexing_action.bzl", "create_lto_artifacts_and_lto_indexing_action")
 load("//cc/private/link:target_types.bzl", "LINKING_MODE", "LINK_TARGET_TYPE", "USE_ARCHIVER", "is_dynamic_library")
 
@@ -304,13 +305,7 @@ def _create_dynamic_link_actions(
 
     mnemonic = "ObjcLink" if dynamic_link_type == LINK_TARGET_TYPE.OBJC_EXECUTABLE else None
 
-    if linking_mode == LINKING_MODE.DYNAMIC:
-        toolchain_libraries = [make_library_to_link(
-            _library_identifier = lib.path,
-            dynamic_library = lib,
-            _disable_whole_archive = True,
-        ) for lib in cc_toolchain.dynamic_runtime_lib(feature_configuration = feature_configuration).to_list()]
-    else:
+    if links_cxx_runtime_statically(feature_configuration, linking_mode):
         toolchain_libraries = [make_library_to_link(
             _library_identifier = lib.path,
             static_library = lib,
@@ -318,6 +313,12 @@ def _create_dynamic_link_actions(
             # include whole libstdc++ in their binary ever.
             _disable_whole_archive = True,
         ) for lib in cc_toolchain.static_runtime_lib(feature_configuration = feature_configuration).to_list()]
+    else:
+        toolchain_libraries = [make_library_to_link(
+            _library_identifier = lib.path,
+            dynamic_library = lib,
+            _disable_whole_archive = True,
+        ) for lib in cc_toolchain.dynamic_runtime_lib(feature_configuration = feature_configuration).to_list()]
 
     libraries_to_link, linkstamps, linkopts, non_code_inputs = \
         _maybe_link_transitively(feature_configuration, dynamic_link_type, linking_mode, linking_contexts)
