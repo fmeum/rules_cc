@@ -1013,6 +1013,402 @@ def _create_cc_compile_actions_with_cpp20_module_helper(
             progress_message_prefix = progress_message_prefix,
         )
 
+def _find_module_file(template_ctx, referenced_directories_by_path, path):
+    """Returns the module file at the given exec path in one of the referenced directories."""
+    directory_path = path
+    for _ in range(path.count("/")):
+        directory_path = directory_path.rpartition("/")[0]
+        directory = referenced_directories_by_path.get(directory_path)
+        if directory:
+            return template_ctx.find_file(
+                directory = directory,
+                path = path[len(directory_path) + 1:],
+            )
+    return None
+
+def _cpp20_modules_compile_template_impl(
+        template_ctx,
+        output_directories,
+        additional_inputs,
+        additional_params,
+        referenced_directories = {},
+        **_kwargs):
+    """Creates the compile actions of a target with C++20 modules.
+
+    Runs at execution time after the module dependencies of every source file are known: the
+    .modmap.input file of a source lists exactly the module files it needs, either of this target
+    or of its dependencies. Since every compile action gets exactly these module files as inputs,
+    nothing has to be discovered at execution time.
+    """
+    p = additional_params
+    cc_toolchain = p["cc_toolchain"]
+    feature_configuration = p["feature_configuration"]
+    use_pic = p["use_pic"]
+
+    # The module files of this target, keyed by their exec path as listed in .modmap.input files.
+    module_files_by_path = {}
+    for unit in p["units"]:
+        if unit.module_file_name:
+            module_file = template_ctx.declare_file(
+                unit.module_file_name,
+                directory = output_directories["module_files"],
+            )
+            module_files_by_path[module_file.path] = module_file
+    referenced_directories_by_path = {d.path: d for d in referenced_directories.values()}
+
+    for unit in p["units"]:
+        module_files = []
+        if unit.modmap_input_key:
+            content = template_ctx.read(additional_inputs[unit.modmap_input_key])
+            for path in content.splitlines():
+                if not path:
+                    continue
+                module_file = module_files_by_path.get(path) or _find_module_file(
+                    template_ctx,
+                    referenced_directories_by_path,
+                    path,
+                )
+                if not module_file:
+                    fail("%s requires the C++20 module file %s, which no target provides" % (
+                        unit.source.short_path,
+                        path,
+                    ))
+                module_files.append(module_file)
+
+        object_file = template_ctx.declare_file(
+            _cc_internal.get_artifact_name_for_category(
+                cc_toolchain = cc_toolchain,
+                category = artifact_category.OBJECT_FILE,
+                output_name = unit.output_name,
+            ),
+            directory = output_directories["objects"],
+        )
+        dotd_file = None
+        if unit.use_dotd:
+            dotd_file = template_ctx.declare_file(
+                _cc_internal.get_artifact_name_for_category(
+                    cc_toolchain = cc_toolchain,
+                    category = artifact_category.INCLUDED_FILE_LIST,
+                    output_name = unit.output_name,
+                ),
+                directory = output_directories["dotd_files"],
+            )
+
+        additional_build_variables = {}
+        additional_outputs = []
+        action_name = None
+        if unit.module_file_name:
+            module_file = module_files_by_path[
+                output_directories["module_files"].path + "/" + unit.module_file_name
+            ]
+            additional_build_variables["cpp_module_output_file"] = module_file
+            additional_outputs.append(module_file)
+            action_name = ACTION_NAMES.cpp20_module_compile
+        if unit.modmap_file:
+            additional_build_variables["cpp_module_modmap_file"] = unit.modmap_file
+
+        compile_variables = get_specific_compile_build_variables(
+            source_file = unit.source,
+            output_file = object_file,
+            user_compile_flags = get_copts(
+                language = p["language"],
+                cpp_configuration = p["cpp_configuration"],
+                source_file = unit.source,
+                copts = p["copts"],
+                conlyopts = p["conlyopts"],
+                cxxopts = p["cxxopts"],
+                label = unit.source_label,
+                # Treat C++20 module interfaces as C++ source files regardless of their extension.
+                override_extension = extensions.CC_SOURCE[0] if unit.module_file_name else None,
+            ),
+            dotd_file = dotd_file,
+            use_pic = use_pic,
+            fdo_build_variables = p["fdo_build_variables"],
+            additional_build_variables = additional_build_variables,
+        )
+        module_args = {}
+        if unit.modmap_file:
+            # Without a modmap input file, the module files are mandatory inputs.
+            module_args = {
+                "module_files": depset(module_files),
+                "modmap_file": unit.modmap_file,
+                "modmap_input_file": None,
+            }
+        _create_compile_action(
+            action_construction_context = template_ctx,
+            cc_compilation_context = p["cc_compilation_context"],
+            cc_toolchain = cc_toolchain,
+            configuration = p["configuration"],
+            feature_configuration = feature_configuration,
+            additional_compilation_inputs = p["additional_compilation_inputs"],
+            additional_include_scanning_roots = p["additional_include_scanning_roots"],
+            source = unit.source,
+            output_file = object_file,
+            dotd_file = dotd_file,
+            use_pic = use_pic,
+            action_name = action_name,
+            compile_build_variables = _cc_internal.combine_cc_toolchain_variables(
+                p["common_compile_build_variables"],
+                compile_variables,
+            ),
+            needs_include_validation = p["needs_include_validation"],
+            toolchain_type = _starlark_cc_semantics.toolchain,
+            progress_message_prefix = p["progress_message_prefix"],
+            additional_outputs = additional_outputs,
+            **module_args
+        )
+
+# buildifier: disable=unused-variable
+def _create_cc_compile_actions_with_cpp20_module_map_directory_helper(
+        *,
+        actions,
+        action_construction_context,
+        additional_compilation_inputs,
+        additional_include_scanning_roots,
+        cc_compilation_context,
+        cc_toolchain,
+        compilation_unit_sources,
+        module_interfaces_sources,
+        configuration,
+        conlyopts,
+        copts,
+        cpp_configuration,
+        cxxopts,
+        fdo_context,
+        feature_configuration,
+        label,
+        private_headers,
+        public_headers,
+        purpose,
+        language,
+        outputs,
+        common_compile_build_variables,
+        auxiliary_fdo_inputs,
+        fdo_build_variables,
+        use_pic,
+        enable_dotd_files,
+        output_name_map,
+        progress_message_prefix):
+    """Like _create_cc_compile_actions_with_cpp20_module_helper, but with exact module inputs.
+
+    Dependency scanning, the aggregation of module information and the generation of modmaps
+    happen in regular actions, exactly as before. The compile actions are created by a
+    map_directory() implementation, which reads the .modmap.input file of every source and gives
+    the compile action exactly the module files listed there as inputs. The module files and
+    object files of the target are therefore files in output directories, and the module files of
+    dependencies are looked up in their directories without waiting for them to be built entirely.
+
+    Since compile actions no longer discover module files as inputs, previously discovered module
+    files can't cause dependency cycles when the imports between modules change.
+    """
+    suffix = "_pic" if use_pic else ""
+    directory_prefix = "_objs/%s/_cpp20_modules%s/" % (label.name, suffix)
+    module_files_dir = actions.declare_directory(directory_prefix + "module_files")
+    objects_dir = actions.declare_directory(directory_prefix + "objects")
+    dotd_files_dir = actions.declare_directory(directory_prefix + "dotd_files")
+
+    modules_info_output_name = label.name
+    if use_pic:
+        modules_info_output_name = _cc_internal.get_artifact_name_for_category(
+            cc_toolchain = cc_toolchain,
+            category = artifact_category.PIC_FILE,
+            output_name = modules_info_output_name,
+        )
+    modules_info_file = _get_compile_output_file(
+        action_construction_context,
+        label,
+        configuration = configuration,
+        output_name = _cc_internal.get_artifact_name_for_category(
+            cc_toolchain = cc_toolchain,
+            category = artifact_category.CPP_MODULES_INFO,
+            output_name = modules_info_output_name,
+        ),
+    )
+    if use_pic:
+        outputs["pic_cpp_modules_info_file"] = modules_info_file
+    else:
+        outputs["cpp_modules_info_file"] = modules_info_file
+
+    def output_name_base(source_artifact):
+        output_name = output_name_map[source_artifact]
+        if not use_pic:
+            return output_name
+        return _cc_internal.get_artifact_name_for_category(
+            cc_toolchain = cc_toolchain,
+            category = artifact_category.PIC_FILE,
+            output_name = output_name,
+        )
+
+    def scan(cpp_source):
+        ddi_output_name = _cc_internal.get_artifact_name_for_category(
+            cc_toolchain = cc_toolchain,
+            category = artifact_category.CPP_MODULES_DDI,
+            output_name = output_name_base(cpp_source.file),
+        )
+        ddi_file = _get_compile_output_file(
+            action_construction_context,
+            label,
+            configuration = configuration,
+            output_name = ddi_output_name,
+        )
+        _create_scan_deps_action(
+            action_construction_context = action_construction_context,
+            additional_compilation_inputs = additional_compilation_inputs,
+            additional_include_scanning_roots = additional_include_scanning_roots,
+            cc_compilation_context = cc_compilation_context,
+            cc_toolchain = cc_toolchain,
+            configuration = configuration,
+            conlyopts = conlyopts,
+            copts = copts,
+            cpp_configuration = cpp_configuration,
+            cxxopts = cxxopts,
+            feature_configuration = feature_configuration,
+            label = label,
+            common_toolchain_variables = common_compile_build_variables,
+            language = language,
+            source_artifact = cpp_source.file,
+            source_label = cpp_source.label,
+            use_pic = use_pic,
+            ddi_file = ddi_file,
+            ddi_output_name = ddi_output_name,
+            progress_message_prefix = progress_message_prefix,
+        )
+        return ddi_file
+
+    def gen_modmap(cpp_source, ddi_file):
+        modmap_file = _get_compile_output_file(
+            action_construction_context,
+            label,
+            configuration = configuration,
+            output_name = _cc_internal.get_artifact_name_for_category(
+                cc_toolchain = cc_toolchain,
+                category = artifact_category.CPP_MODULES_MODMAP,
+                output_name = output_name_base(cpp_source.file),
+            ),
+        )
+        modmap_input_file = _get_compile_output_file(
+            action_construction_context,
+            label,
+            configuration = configuration,
+            output_name = _cc_internal.get_artifact_name_for_category(
+                cc_toolchain = cc_toolchain,
+                category = artifact_category.CPP_MODULES_MODMAP_INPUT,
+                output_name = output_name_base(cpp_source.file),
+            ),
+        )
+        _create_gen_modmap_action(
+            actions = actions,
+            cc_toolchain = cc_toolchain,
+            ddi_file = ddi_file,
+            modules_info_file = modules_info_file,
+            modmap_file = modmap_file,
+            modmap_input_file = modmap_input_file,
+        )
+        return modmap_file, modmap_input_file
+
+    # The module files of this target, in the same order as the .ddi files of the interfaces.
+    interface_ddi_files = []
+    interface_module_file_names = []
+    interface_units = []
+    for cpp_source in module_interfaces_sources.values():
+        module_file_name = _cc_internal.get_artifact_name_for_category(
+            cc_toolchain = cc_toolchain,
+            category = artifact_category.CPP_MODULE,
+            output_name = output_name_base(cpp_source.file),
+        )
+        ddi_file = scan(cpp_source)
+        interface_ddi_files.append(ddi_file)
+        interface_module_file_names.append(module_file_name)
+        interface_units.append((cpp_source, ddi_file, module_file_name))
+
+    transitive_module_files = cc_compilation_context._pic_module_files if use_pic else cc_compilation_context._module_files
+    _create_aggregate_ddi_action(
+        actions = actions,
+        cc_toolchain = cc_toolchain,
+        ddi_files = interface_ddi_files,
+        direct_module_files = [
+            module_files_dir.path + "/" + name
+            for name in interface_module_file_names
+        ],
+        transitive_modules_info_files = cc_compilation_context._pic_modules_info_files if use_pic else cc_compilation_context._modules_info_files,
+        modules_info_file = modules_info_file,
+    )
+
+    units = []
+    additional_inputs = {}
+    for cpp_source, ddi_file, module_file_name in interface_units:
+        modmap_file, modmap_input_file = gen_modmap(cpp_source, ddi_file)
+        key = "modmap_input_%d" % len(units)
+        additional_inputs[key] = modmap_input_file
+        units.append(struct(
+            source = cpp_source.file,
+            source_label = cpp_source.label,
+            output_name = output_name_base(cpp_source.file),
+            module_file_name = module_file_name,
+            modmap_file = modmap_file,
+            modmap_input_key = key,
+            use_dotd = enable_dotd_files and _use_dotd_file(feature_configuration, cpp_source.file),
+        ))
+    for cpp_source in compilation_unit_sources.values():
+        modmap_file = None
+        key = None
+
+        # Only C++ compilation units are compiled with C++20 modules.
+        if "." + cpp_source.file.extension in extensions.CC_SOURCE:
+            modmap_file, modmap_input_file = gen_modmap(cpp_source, scan(cpp_source))
+            key = "modmap_input_%d" % len(units)
+            additional_inputs[key] = modmap_input_file
+        units.append(struct(
+            source = cpp_source.file,
+            source_label = cpp_source.label,
+            output_name = output_name_base(cpp_source.file),
+            module_file_name = None,
+            modmap_file = modmap_file,
+            modmap_input_key = key,
+            use_dotd = enable_dotd_files and _use_dotd_file(feature_configuration, cpp_source.file),
+        ))
+
+    actions.map_directory(
+        implementation = _cpp20_modules_compile_template_impl,
+        additional_inputs = additional_inputs,
+        output_directories = {
+            "module_files": module_files_dir,
+            "objects": objects_dir,
+            "dotd_files": dotd_files_dir,
+        },
+        referenced_directories = {
+            "dep_%d" % i: directory
+            for i, directory in enumerate(transitive_module_files.to_list())
+        },
+        tools = {},
+        additional_params = {
+            "units": units,
+            "cc_compilation_context": cc_compilation_context,
+            "cc_toolchain": cc_toolchain,
+            "configuration": configuration,
+            "cpp_configuration": cpp_configuration,
+            "feature_configuration": feature_configuration,
+            "language": language,
+            "copts": copts,
+            "conlyopts": conlyopts,
+            "cxxopts": cxxopts,
+            "use_pic": use_pic,
+            "additional_compilation_inputs": additional_compilation_inputs,
+            "additional_include_scanning_roots": additional_include_scanning_roots,
+            "common_compile_build_variables": common_compile_build_variables,
+            "fdo_build_variables": fdo_build_variables,
+            "needs_include_validation": _starlark_cc_semantics.needs_include_validation(language),
+            "progress_message_prefix": progress_message_prefix,
+        },
+    )
+
+    if use_pic:
+        outputs["pic_objects"].append(objects_dir)
+        outputs["pic_cpp_module_files"].append(module_files_dir)
+    else:
+        outputs["objects"].append(objects_dir)
+        outputs["cpp_module_files"].append(module_files_dir)
+
 def _create_cc_compile_actions_with_cpp20_module(
         *,
         actions,
@@ -1052,8 +1448,14 @@ def _create_cc_compile_actions_with_cpp20_module(
         use_pic_values.append(False)
     if generate_pic_action:
         use_pic_values.append(True)
+    # TODO: Replace the --define with a proper flag or feature.
+    use_map_directory = _cc_internal.actions2ctx_cheat(actions).var.get("cpp20_modules") == "map_directory"
+    if use_map_directory:
+        helper = _create_cc_compile_actions_with_cpp20_module_map_directory_helper
+    else:
+        helper = _create_cc_compile_actions_with_cpp20_module_helper
     for use_pic in use_pic_values:
-        _create_cc_compile_actions_with_cpp20_module_helper(
+        helper(
             actions = actions,
             action_construction_context = action_construction_context,
             additional_compilation_inputs = additional_compilation_inputs,
